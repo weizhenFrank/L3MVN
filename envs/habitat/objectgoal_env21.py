@@ -151,7 +151,8 @@ class ObjectGoal_Env21(habitat.RLEnv):
         # print("rgb shape: ,", rgb.shape)
         # print("depth shape: ,", depth.shape)
         # print("semantic shape: ,", semantic.shape)
-
+        if len(semantic.shape) == 2:
+            semantic = np.expand_dims(semantic, 2)
         state = np.concatenate((rgb, depth, semantic), axis=2).transpose(2, 0, 1)
         self.last_sim_location = self.get_sim_location()
 
@@ -203,6 +204,8 @@ class ObjectGoal_Env21(habitat.RLEnv):
         rgb = obs['rgb'].astype(np.uint8)
         depth = obs['depth']
         semantic = self._preprocess_semantic(obs["semantic"])
+        if len(semantic.shape) == 2:
+            semantic = np.expand_dims(semantic, 2)
         state = np.concatenate((rgb, depth, semantic), axis=2).transpose(2, 0, 1)
 
         self.timestep += 1
