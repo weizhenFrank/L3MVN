@@ -502,7 +502,8 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env21):
             f_pos = np.argwhere(goal == 1)
             # fmb = get_frontier_boundaries((f_pos[0][0], f_pos[0][1]))
             # goal_fmb = skimage.draw.circle_perimeter(int((fmb[0]+fmb[1])/2), int((fmb[2]+fmb[3])/2), 23)
-            goal_fmb = skimage.draw.circle_perimeter(f_pos[0][0], f_pos[0][1], local_w/4-2)
+
+            goal_fmb = skimage.draw.circle_perimeter(int(f_pos[0][0]), int(f_pos[0][1]), int(local_w/4-2))
             goal_fmb[0][goal_fmb[0] > local_w-1] = local_w-1
             goal_fmb[1][goal_fmb[1] > local_w-1] = local_w-1
             goal_fmb[0][goal_fmb[0] < 0] = 0

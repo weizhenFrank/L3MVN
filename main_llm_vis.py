@@ -112,7 +112,8 @@ def main():
     # Logging and loss variables
     num_scenes = args.num_processes
     num_episodes = int(args.num_eval_episodes)
-    device = args.device = torch.device("cuda:0" if args.cuda else "cpu")
+    # device = args.device = torch.device("cuda:0" if args.cuda else "cpu")
+    device = args.device = torch.device(f"cuda:{args.device}" if torch.cuda.is_available() else "cpu")
 
     g_masks = torch.ones(num_scenes).float().to(device)
     step_masks = torch.zeros(num_scenes).float().to(device)
@@ -147,6 +148,7 @@ def main():
 
     # Starting environments
     torch.set_num_threads(1)
+    # import pdb; pdb.set_trace()
     envs = make_vec_envs(args)
     obs, infos = envs.reset()
 

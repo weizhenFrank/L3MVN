@@ -4,7 +4,7 @@ import torch
 
 def get_args():
     parser = argparse.ArgumentParser(
-        description='Goal-Oriented-Semantic-Exploration')
+        description="Frank's projects")
 
     # General Arguments
     parser.add_argument('--seed', type=int, default=1,
@@ -33,6 +33,8 @@ def get_args():
     parser.add_argument("--sem_gpu_id", type=int, default=-1,
                         help="""gpu id for semantic model,
                                 -1: same as sim gpu, -2: cpu""")
+    parser.add_argument("--device", type=int, default=0,
+                        help="""gpu id""")
 
     # Logging, loading models, visualization
     parser.add_argument('--log_interval', type=int, default=10,
