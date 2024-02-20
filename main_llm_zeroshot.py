@@ -35,7 +35,7 @@ from model import Semantic_Mapping, FeedforwardNet
 from envs.utils.fmm_planner import FMMPlanner
 from envs import make_vec_envs
 from arguments import get_args
-import algo
+# import algo
 
 from constants import category_to_id, hm3d_category, category_to_id_gibson
 
