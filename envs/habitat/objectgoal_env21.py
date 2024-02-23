@@ -147,6 +147,7 @@ class ObjectGoal_Env21(habitat.RLEnv):
         # print("obs shape: ,", obs.shape)
         rgb = obs['rgb'].astype(np.uint8)
         depth = obs['depth']
+        
         semantic = self._preprocess_semantic(obs["semantic"])
         # print("rgb shape: ,", rgb.shape)
         # print("depth shape: ,", depth.shape)

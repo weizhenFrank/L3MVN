@@ -353,11 +353,14 @@ class ObjectGoal_Env(habitat.RLEnv):
         # print("obs shape: ,", obs.shape)
         rgb = obs['rgb'].astype(np.uint8)
         depth = obs['depth']
+        # from remote_pdb import RemotePdb
+        # RemotePdb('127.0.0.1', 2222).set_trace()
         semantic = self._preprocess_semantic(obs["semantic"])
         # print("rgb shape: ,", rgb.shape)
         # print("depth shape: ,", depth.shape)
         # print("semantic shape: ,", semantic.shape)
-
+        if len(semantic.shape) == 2:
+            semantic = np.expand_dims(semantic, 2)
         state = np.concatenate((rgb, depth, semantic), axis=2).transpose(2, 0, 1)
         self.last_sim_location = self.get_sim_location()
 
@@ -407,6 +410,8 @@ class ObjectGoal_Env(habitat.RLEnv):
         rgb = obs['rgb'].astype(np.uint8)
         depth = obs['depth']
         semantic = self._preprocess_semantic(obs["semantic"])
+        if len(semantic.shape) == 2:
+            semantic = np.expand_dims(semantic, 2)
         state = np.concatenate((rgb, depth, semantic), axis=2).transpose(2, 0, 1)
 
         self.timestep += 1
@@ -419,6 +424,8 @@ class ObjectGoal_Env(habitat.RLEnv):
         se = list(set(semantic.ravel()))
         # print(se) # []
         for i in range(len(se)):
+            # from remote_pdb import RemotePdb
+            # RemotePdb('127.0.0.1', 4444).set_trace()
             if self.scene.objects[se[i]] is not None and self.scene.objects[se[i]].category.name() in coco_categories:
                 # print(self.scene.objects[se[i]].id) 
                 # print(self.scene.objects[se[i]].category.index()) 
