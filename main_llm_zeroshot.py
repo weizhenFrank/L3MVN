@@ -40,7 +40,7 @@ from arguments import get_args
 from constants import category_to_id, hm3d_category, category_to_id_gibson
 
 import envs.utils.pose as pu
-
+import language_tools
 os.environ["OMP_NUM_THREADS"] = "1"
 
 
@@ -732,31 +732,69 @@ def main():
                 cname = infos[e]['goal_name'] 
                 frontier_score_list[e] = []
                 tpm = len(list(set(target_point_map[e].ravel()))) -1
+
+                # for lay in range(tpm):
+                #     f_pos = np.argwhere(target_point_map[e] == lay+1)
+                #     fmb = get_frontier_boundaries((f_pos[0][0], f_pos[0][1]),
+                #                                     (local_w/6, local_h/6),
+                #                                     (local_w, local_h))
+                #     objs_list = []
+                #     for se_cn in range(args.num_sem_categories-1):
+                #         if local_map[e][se_cn+4, fmb[0]:fmb[1], fmb[2]:fmb[3]].sum() != 0.:
+                #             objs_list.append(hm3d_category[se_cn])
+
+                #     if len(objs_list)>0 and found_goal[e] == 0:
+                #         ref_dist = F.softmax(construct_dist(objs_list),
+                #                             dim=0).to(device)
+                #         new_dist = ref_dist
+            
+                #         # for obj in objs_list:
+                #         #     if obj in category_to_id:
+                #         #         new_dist[category_to_id.index(obj)] = 0.0001
+
+                #         # ref = torch.argmax(new_dist)
+                #         # frontier_score_list[e].append(new_dist) 
+                #         frontier_score_list[e].append(new_dist[category_to_id.index(cname)]) 
+                #     else:
+                #         frontier_score_list[e].append(Goal_score[lay]/max(Goal_score) * 0.1 + 0.1) 
                 
+                clusters = []
+
                 for lay in range(tpm):
                     f_pos = np.argwhere(target_point_map[e] == lay+1)
                     fmb = get_frontier_boundaries((f_pos[0][0], f_pos[0][1]),
                                                     (local_w/6, local_h/6),
                                                     (local_w, local_h))
                     objs_list = []
-                    for se_cn in range(args.num_sem_categories-1):
-                        if local_map[e][se_cn+4, fmb[0]:fmb[1], fmb[2]:fmb[3]].sum() != 0.:
+                    for se_cn in range(args.num_sem_categories - 1):
+                        if local_map[e][se_cn + 4, fmb[0]:fmb[1], fmb[2]:fmb[3]].sum() != 0.:
                             objs_list.append(hm3d_category[se_cn])
                     
-                    if len(objs_list)>0 and found_goal[e] == 0:
-                        ref_dist = F.softmax(construct_dist(objs_list),
-                                            dim=0).to(device)
-                        new_dist = ref_dist
-            
-                        # for obj in objs_list:
-                        #     if obj in category_to_id:
-                        #         new_dist[category_to_id.index(obj)] = 0.0001
+                    clusters.append(objs_list)
 
-                        # ref = torch.argmax(new_dist)
-                        # frontier_score_list[e].append(new_dist) 
-                        frontier_score_list[e].append(new_dist[category_to_id.index(cname)]) 
-                    else:
-                        frontier_score_list[e].append(Goal_score[lay]/max(Goal_score) * 0.1 + 0.1) 
+                # Use the new LLM tool to get scores for each cluster
+                if clusters:
+                    scores, reasoning = language_tools.query_llm(language_tools.LanguageMethod.SAMPLING_POSTIIVE, clusters, cname)
+                    
+                    # Convert scores to tensors and ensure they are on the same device
+                    scores_tensors = [torch.tensor(score).to(device) for score in scores]
+                    
+                    # # Extend the frontier score list with the new tensor scores
+                    # frontier_score_list[e].extend(scores_tensors)
+                    
+                    # Stack the scores tensors to apply softmax
+                    stacked_scores = torch.stack(scores_tensors)
+                    softmaxed_scores = F.softmax(stacked_scores, dim=0)
+                    final_scores = [score for score in softmaxed_scores]
+                    # Update the frontier score list with the softmaxed scores
+                    frontier_score_list[e].extend(final_scores)
+                else:
+                    # Extend with default scores, ensuring they are tensors on the correct CUDA device
+                    default_scores = [torch.tensor(0.1, device) for _ in range(tpm)]
+                    frontier_score_list[e].extend(default_scores)
+                import pdb; pdb.set_trace()
+
+
 
                 
             # ------------------------------------------------------------------

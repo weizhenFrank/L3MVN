@@ -406,7 +406,7 @@ class LanguageMethod(Enum):
     SAMPLING_NEGATIVE = 3
     GREEDY = 4
 
-def query_llm(method: LanguageMethod, object_clusters: list, goal: str, reasoning_enabled: bool = False) -> list:
+def query_llm(method: LanguageMethod, object_clusters: list, goal: str, reasoning_enabled: bool = True) -> list:
     """
     Query the LLM fore a score and a selected goal. Returns a list of language scores for each target point
     method = SINGLE_SAMPLE uses the naive single sample LLM and binary scores of 0 or 1
