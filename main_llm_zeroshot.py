@@ -415,6 +415,7 @@ def main():
             tokenizer = GPT2Tokenizer.from_pretrained("EleutherAI/gpt-neo-1.3B")
             object_norm_inv_perplexity = compute_object_norm_inv_ppl(
                 "./label_matrices/gptneo_negcrossent/room_object.npy")
+        
         else:
             print("Model option " + lm + " not implemented yet")
             raise NotImplemented
