@@ -482,6 +482,7 @@ def main():
 
             score = scoring_fxn(TEMP_STR)
             TEMP.append(score)
+            
         dist = torch.tensor(TEMP)
 
         return dist
@@ -740,12 +741,12 @@ def main():
                     for se_cn in range(args.num_sem_categories-1):
                         if local_map[e][se_cn+4, fmb[0]:fmb[1], fmb[2]:fmb[3]].sum() != 0.:
                             objs_list.append(hm3d_category[se_cn])
-
+                    
                     if len(objs_list)>0 and found_goal[e] == 0:
                         ref_dist = F.softmax(construct_dist(objs_list),
                                             dim=0).to(device)
                         new_dist = ref_dist
-
+            
                         # for obj in objs_list:
                         #     if obj in category_to_id:
                         #         new_dist[category_to_id.index(obj)] = 0.0001
@@ -756,7 +757,7 @@ def main():
                     else:
                         frontier_score_list[e].append(Goal_score[lay]/max(Goal_score) * 0.1 + 0.1) 
 
-
+                
             # ------------------------------------------------------------------
 
             # ------------------------------------------------------------------
