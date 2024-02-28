@@ -792,7 +792,7 @@ def main():
                     # Extend with default scores, ensuring they are tensors on the correct CUDA device
                     default_scores = [torch.tensor(0.1, device) for _ in range(tpm)]
                     frontier_score_list[e].extend(default_scores)
-                import pdb; pdb.set_trace()
+
 
 
 
