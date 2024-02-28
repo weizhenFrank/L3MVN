@@ -3,3 +3,4 @@ data/*
 *.pth
 tmp/*
 gibson_tiny/
+*ipynb
