@@ -11,7 +11,7 @@ import torch.optim as optim
 import numpy as np
 from torch.autograd import Variable
 import torch.nn.functional as F
-
+import openai
 from transformers import (
     BertTokenizer,
     BertForMaskedLM,
@@ -416,6 +416,7 @@ def main():
             object_norm_inv_perplexity = compute_object_norm_inv_ppl(
                 "./label_matrices/gptneo_negcrossent/room_object.npy")
         elif "gpt" in lm:
+            openai.api_key = args.key
             return None
         
         else:
