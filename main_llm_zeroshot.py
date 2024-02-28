@@ -777,7 +777,7 @@ def main():
                     scores, reasoning = language_tools.query_llm(language_tools.LanguageMethod.SAMPLING_POSTIIVE, clusters, cname)
                     
                     # Convert scores to tensors and ensure they are on the same device
-                    scores_tensors = [torch.tensor(score).to(device) for score in scores]
+                    scores_tensors = [torch.tensor(score, dtype=torch.float).to(device) for score in scores]
                     
                     # # Extend the frontier score list with the new tensor scores
                     # frontier_score_list[e].extend(scores_tensors)
