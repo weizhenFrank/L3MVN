@@ -226,7 +226,7 @@ def ask_gpt(goal, object_clusters):
     raise Exception("Object categories must be non-empty")
 
 @retry.retry(tries=5)
-def ask_gpts(goal, object_clusters, num_samples=10):
+def ask_gpts(goal, object_clusters, num_samples=10, model="gpt-4-0125-preview"):
     system_message = "You are a robot exploring a house. You have access to semantic sensors that can detect objects. You are in the middle of the house with clusters of objects. Your goal is to figure near which cluster to explore next. Always provide reasoning and if there is no clear choice select answer 0" 
     messages=[
         {"role": "system", "content": system_message},
@@ -244,7 +244,7 @@ def ask_gpts(goal, object_clusters, num_samples=10):
             options += f"{i+1}. {cluser_string}\n"
         messages.append({"role": "user", "content": f"You see the following clusters of objects:\n\n {options}\nQuestion: You goal is to find a {goal}. Where should you go next? If there is not clear choice select answer 0.\n"})
         completion = openai.ChatCompletion.create(
-            model="gpt-4-0125-preview", temperature=1,
+            model=model, temperature=1,
             n=num_samples, messages=messages)
         
         answers = []
@@ -406,7 +406,7 @@ class LanguageMethod(Enum):
     SAMPLING_NEGATIVE = 3
     GREEDY = 4
 
-def query_llm(method: LanguageMethod, object_clusters: list, goal: str, reasoning_enabled: bool = True) -> list:
+def query_llm(method: LanguageMethod, object_clusters: list, goal: str, reasoning_enabled: bool = True, model="gpt-4-0125-preview") -> list:
     """
     Query the LLM fore a score and a selected goal. Returns a list of language scores for each target point
     method = SINGLE_SAMPLE uses the naive single sample LLM and binary scores of 0 or 1
@@ -447,7 +447,7 @@ def query_llm(method: LanguageMethod, object_clusters: list, goal: str, reasonin
                 language_scores[0] = value
     elif method == LanguageMethod.SAMPLING_POSTIIVE:
         try:
-            answer_counts, reasoning = ask_gpts_v2(goal, query, positives=True, reasoning_enabled=reasoning_enabled)
+            answer_counts, reasoning = ask_gpts_v2(goal, query, positives=True, reasoning_enabled=reasoning_enabled, model=model)
         except Exception as excptn:
             answer_counts, reasoning = {}, "GPTs failed"
             print("GPTs failed:", excptn)
@@ -459,7 +459,7 @@ def query_llm(method: LanguageMethod, object_clusters: list, goal: str, reasonin
 
     elif method == LanguageMethod.SAMPLING_NEGATIVE:
         try:
-            answer_counts, reasoning = ask_gpts_v2(goal, query, positives=False,  reasoning_enabled=reasoning_enabled)
+            answer_counts, reasoning = ask_gpts_v2(goal, query, positives=False,  reasoning_enabled=reasoning_enabled, model=model)
         except Exception as excptn:
             answer_counts, reasoning = {}, "GPTs failed"
             print("GPTs failed:", excptn)

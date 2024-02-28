@@ -415,6 +415,8 @@ def main():
             tokenizer = GPT2Tokenizer.from_pretrained("EleutherAI/gpt-neo-1.3B")
             object_norm_inv_perplexity = compute_object_norm_inv_ppl(
                 "./label_matrices/gptneo_negcrossent/room_object.npy")
+        elif "gpt" in lm:
+            return None
         
         else:
             print("Model option " + lm + " not implemented yet")
@@ -467,7 +469,7 @@ def main():
 
         return scoring_fxn
 
-    scoring_fxn = configure_lm("GPT2-large")
+    scoring_fxn = configure_lm(args.llm)
 
     ### LLM 
     def construct_dist(objs):
@@ -774,7 +776,7 @@ def main():
 
                 # Use the new LLM tool to get scores for each cluster
                 if clusters:
-                    scores, reasoning = language_tools.query_llm(language_tools.LanguageMethod.SAMPLING_POSTIIVE, clusters, cname, reasoning_enabled=args.reasoning)
+                    scores, reasoning = language_tools.query_llm(language_tools.LanguageMethod.SAMPLING_POSTIIVE, clusters, cname, reasoning_enabled=args.reasoning, model=args.llm)
                     
                     # Convert scores to tensors and ensure they are on the same device
                     scores_tensors = [torch.tensor(score, dtype=torch.float).to(device) for score in scores]

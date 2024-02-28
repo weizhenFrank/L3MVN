@@ -1,6 +1,6 @@
 import argparse
 import torch
-
+import os
 
 def get_args():
     parser = argparse.ArgumentParser(
@@ -159,8 +159,16 @@ def get_args():
     parser.add_argument('--load_se_edge', type=str, default="0",
                         help="""model path to load,
                                 0 to not reload (default: 0)""")
+    # LLM settings
     parser.add_argument('--reasoning', action='store_true', default=False,
                         help='LLM reasoning')
+    parser.add_argument("--llm", type=str,
+                        default="gpt-4-0125-preview",
+                        help="model name")
+    parser.add_argument("--key", type=str,
+                        default=os.getenv("OPENAI_API_KEY"),
+                        help="openai model api key")
+
 
 
     # parse arguments
