@@ -159,6 +159,8 @@ def get_args():
     parser.add_argument('--load_se_edge', type=str, default="0",
                         help="""model path to load,
                                 0 to not reload (default: 0)""")
+    parser.add_argument('--reasoning', action='store_true', default=False,
+                        help='LLM reasoning')
 
 
     # parse arguments
