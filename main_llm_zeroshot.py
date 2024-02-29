@@ -784,16 +784,18 @@ def main():
                     scores_tensors = [torch.tensor(score, dtype=torch.float).to(device) for score in scores]
                     
                     # # Extend the frontier score list with the new tensor scores
-                    # frontier_score_list[e].extend(scores_tensors)
+                    frontier_score_list[e].extend(scores_tensors)
                     
-                    # Stack the scores tensors to apply softmax
-                    stacked_scores = torch.stack(scores_tensors)
-                    softmaxed_scores = F.softmax(stacked_scores, dim=0)
-                    final_scores = [score for score in softmaxed_scores]
-                    # Update the frontier score list with the softmaxed scores
-                    frontier_score_list[e].extend(final_scores)
+                    # # Stack the scores tensors to apply softmax
+                    # stacked_scores = torch.stack(scores_tensors)
+                    # softmaxed_scores = F.softmax(stacked_scores, dim=0)
+                    # final_scores = [score for score in softmaxed_scores]
+                    # # Update the frontier score list with the softmaxed scores
+                    # frontier_score_list[e].extend(final_scores)
                 else:
                     # Extend with default scores, ensuring they are tensors on the correct CUDA device
+                    logging.warning(f"No clusters found for environment {e}. Using default scores.")
+                    print("No clusters found for environment {e}. Using default scores.")
                     default_scores = [torch.tensor(0.1, device) for _ in range(tpm)]
                     frontier_score_list[e].extend(default_scores)
 
@@ -837,19 +839,19 @@ def main():
             # ------------------------------------------------------------------
             global_item = 0
             if len(frontier_score_list[e]) > 0:
-                if max(frontier_score_list[e]) > 0.3:
-                    global_item = frontier_score_list[e].index(max(frontier_score_list[e]))
+                # if max(frontier_score_list[e]) > 0.3:
+                #     global_item = frontier_score_list[e].index(max(frontier_score_list[e]))
                 
-                elif max(frontier_score_list[e]) > 0.1:
-                    for f_score in frontier_score_list[e]:
-                        if f_score > 0.1:
-                            break
-                        else:
-                            global_item += 1
-                else:
-                    global_item = 0
+                # elif max(frontier_score_list[e]) > 0.1:
+                #     for f_score in frontier_score_list[e]:
+                #         if f_score > 0.1:
+                #             break
+                #         else:
+                #             global_item += 1
+                # else:
+                #     global_item = 0
                 #------------------------------------------------------------------
-
+                global_item = frontier_score_list[e].index(max(frontier_score_list[e]))
                 ###### Get llm frontier reward
                 # ------------------------------------------------------------------
                 if max(frontier_score_list[e]) > 0.1:
