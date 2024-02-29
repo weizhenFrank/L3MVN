@@ -165,6 +165,9 @@ def get_args():
     parser.add_argument("--llm", type=str,
                         default="gpt-4-0125-preview",
                         help="model name")
+    parser.add_argument("--sam_method", type=str,
+                        default='positive',
+                        help="llm sampling method")
     parser.add_argument("--key", type=str,
                         default=os.getenv("OPENAI_API_KEY"),
                         help="openai model api key")

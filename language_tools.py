@@ -3,7 +3,7 @@ import retry
 import re
 import numpy as np
 from enum import Enum
-
+import torch
 
 USER_EXAMPLE_1 = """You see the following clusters of objects:
 
@@ -501,3 +501,28 @@ def aggregate_reasoning(reasoning: list):
         messages=messages)
     complete_response = completion.choices[0].message["content"]
     return complete_response
+
+
+
+def score_func(sampling_mathod, frontiers, goal, reasoning_enabled=False, model=None, wp=1, wn=0.5):
+    
+    if sampling_mathod == 'positive':
+        scores, reasoning = query_llm(LanguageMethod.SAMPLING_POSTIIVE, frontiers, goal, reasoning_enabled=reasoning_enabled, model=model)
+        return scores, reasoning
+    elif sampling_mathod == 'negative':
+        scores, reasoning = query_llm(LanguageMethod.SAMPLING_NEGATIVE, frontiers, goal, reasoning_enabled=reasoning_enabled, model=model)
+        return [-score for score in scores], reasoning
+    elif sampling_mathod == 'greedy':
+        scores, reasoning = query_llm(LanguageMethod.GREEDY, frontiers, goal, reasoning_enabled=reasoning_enabled, model=model)
+        return scores, reasoning
+    elif sampling_mathod == 'single_sample':
+        scores, reasoning = query_llm(LanguageMethod.SINGLE_SAMPLE, frontiers, goal, reasoning_enabled=reasoning_enabled, model=model)
+        return scores, reasoning
+    elif sampling_mathod == 'pn':
+        scores, reasoning = query_llm(LanguageMethod.SAMPLING_POSTIIVE, frontiers, goal, reasoning_enabled=reasoning_enabled, model=model)
+        n_scores, reasoning = query_llm(LanguageMethod.SAMPLING_NEGATIVE, frontiers, goal, reasoning_enabled=reasoning_enabled, model=model)
+        return [wp*scores[i] - wn*n_scores[i] for i in range(len(scores))], reasoning
+    else:
+        raise Exception("Invalid sampling method")
+        
+        

@@ -777,7 +777,8 @@ def main():
 
                 # Use the new LLM tool to get scores for each cluster
                 if clusters:
-                    scores, reasoning = language_tools.query_llm(language_tools.LanguageMethod.SAMPLING_POSTIIVE, clusters, cname, reasoning_enabled=args.reasoning, model=args.llm)
+                    # scores, reasoning = language_tools.query_llm(language_tools.LanguageMethod.SAMPLING_POSTIIVE, clusters, cname, reasoning_enabled=args.reasoning, model=args.llm)
+                    scores, reasoning =  language_tools.score_func(args.sam_method, clusters, cname, reasoning_enabled=args.reasoning, model=args.llm)
                     
                     # Convert scores to tensors and ensure they are on the same device
                     scores_tensors = [torch.tensor(score, dtype=torch.float).to(device) for score in scores]
