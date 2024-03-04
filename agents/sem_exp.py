@@ -385,11 +385,17 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
         depth = obs[:, :, 3:4]
         semantic = obs[:,:,4:5].squeeze()
         # print("obs: ", semantic.shape)
+        # from remote_pdb import RemotePdb
+        # port = 4444 + os.getpid() % 1000
+        # print('pdb at: ', port)
+        # RemotePdb('0.0.0.0', port).set_trace()
+
         if args.use_gtsem:
             self.rgb_vis = rgb
             sem_seg_pred = np.zeros((rgb.shape[0], rgb.shape[1], 15 + 1))
             for i in range(16):
                 sem_seg_pred[:,:,i][semantic == i+1] = 1
+            
         else: 
             red_semantic_pred, semantic_pred = self._get_sem_pred(
                 rgb.astype(np.uint8), depth, use_seg=use_seg)
@@ -552,4 +558,5 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
                 self.rank, self.episode_no, self.timestep)
             cv2.imwrite(fn, self.vis_image)
 
-
+    # def _viz_seg(self, inputs):
+        

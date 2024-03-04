@@ -30,11 +30,15 @@ class SemanticPredMaskRCNN():
         image_list = []
         img = img[:, :, ::-1]
         image_list.append(img)
+        # seg_predictions, vis_output = self.segmentation_model.get_predictions(
+        #     image_list, visualize=args.visualize == 2)
         seg_predictions, vis_output = self.segmentation_model.get_predictions(
-            image_list, visualize=args.visualize == 2)
+        image_list, visualize=True)
+        
 
-        if args.visualize == 2:
-            img = vis_output.get_image()
+        # if args.visualize == 2:
+        #     img = vis_output.get_image()
+        img = vis_output.get_image()
 
         semantic_input = np.zeros((img.shape[0], img.shape[1], 15 + 1))
 
