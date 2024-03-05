@@ -389,22 +389,19 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
         if args.use_gtsem:
             self.rgb_vis = rgb
             sem_seg_pred = np.zeros((rgb.shape[0], rgb.shape[1], 15 + 1))
-            # from remote_pdb import RemotePdb
-            # port = 4444 + os.getpid() % 1000
-            # print('pdb at: ', port)
-            # RemotePdb('0.0.0.0', port).set_trace()
-            self._viz_seg(rgb, semantic)
+
             for i in range(16):
                 sem_seg_pred[:,:,i][semantic == i+1] = 1
-            
-            
         else: 
             red_semantic_pred, semantic_pred = self._get_sem_pred(
                 rgb.astype(np.uint8), depth, use_seg=use_seg)
             
-            sem_seg_pred = np.zeros((rgb.shape[0], rgb.shape[1], 15 + 1))   
+            sem_seg_pred = np.zeros((rgb.shape[0], rgb.shape[1], 15 + 1)) 
+
+            self._viz_seg(rgb, red_semantic_pred)
             for i in range(0, 15):
                 # print(mp_categories_mapping[i])
+                
                 sem_seg_pred[:,:,i][red_semantic_pred == mp_categories_mapping[i]] = 1
 
             sem_seg_pred[:,:,0][semantic_pred[:,:,0] == 0] = 0
@@ -560,58 +557,72 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
                 self.rank, self.episode_no, self.timestep)
             cv2.imwrite(fn, self.vis_image)
 
+
+
     def _viz_seg(self, rgb_image, label_map):
-        def apply_color_map(label_map, num_classes):
+        import numpy as np
+        import cv2
+        import os
+        from datetime import datetime
+        def apply_color_map(label_map, color):
             """
             Apply a color map to the label map.
             :param label_map: HxW label map (2D numpy array).
-            :param num_classes: Number of classes.
+            :param color: Color tuple for the class.
             :return: HxWx3 colored label map.
             """
-            colors = np.random.randint(0, 255, size=(num_classes, 3), dtype=np.uint8)
             colored_label_map = np.zeros((label_map.shape[0], label_map.shape[1], 3), dtype=np.uint8)
-
-            for cls in range(num_classes):
-                colored_label_map[label_map == cls] = colors[cls]
-
+            colored_label_map[label_map > 0] = color  # Apply color where label_map indicates the class
             return colored_label_map
 
-        def overlay_segmentation(rgb_image, label_map):
+        def overlay_segmentation(rgb_image, label_map, color):
             """
             Overlay the segmentation map on the RGB image.
             :param rgb_image: HxWx3 RGB image.
             :param label_map: HxW label map (2D numpy array).
+            :param color: Color tuple to use for the overlay.
             :return: Overlay image.
             """
-            num_classes = np.unique(label_map).size
-            colored_label_map = apply_color_map(label_map, num_classes)
+            colored_label_map = apply_color_map(label_map, color)
 
             # Ensure both images are of type uint8
-            if rgb_image.dtype != np.uint8:
-                rgb_image = rgb_image.astype(np.uint8)
-            if colored_label_map.dtype != np.uint8:
-                colored_label_map = colored_label_map.astype(np.uint8)
+            rgb_image = rgb_image.astype(np.uint8)
+            colored_label_map = colored_label_map.astype(np.uint8)
 
             overlay_image = cv2.addWeighted(rgb_image, 0.5, colored_label_map, 0.5, 0)
             return overlay_image
 
-        def generate_overlay_image(rgb_image, label_map):
+        def generate_overlay_images(rgb_image, label_map):
             """
-            Generate an overlay of the label map on the RGB image and save it.
+            Generate an overlay of the label map on the RGB image for each class and save them.
             """
-            from datetime import datetime
-            args = self.args
-            dump_dir = "{}/dump/{}/".format(args.dump_location, args.exp_name)
-            ep_dir = '{}/episodes/thread_{}/eps_{}/'.format(dump_dir, self.rank, self.episode_no)
-            if not os.path.exists(ep_dir):
-                os.makedirs(ep_dir)
-            
-            assert rgb_image.shape[:2] == label_map.shape, "Dimensions of RGB image and label map must match"
-            overlay_img = overlay_segmentation(rgb_image, label_map)
+            unique_classes = np.unique(label_map)
+            for cls in unique_classes:
+                if cls == 0:  # Skip the background
+                    continue
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f'{ep_dir}{self.rank}-{self.episode_no}-Vis-{self.timestep}-{timestamp}.png'
-            cv2.imwrite(filename, overlay_img)
-            print(f"Overlay image saved as {filename}")
+                # Create a binary mask for the current class
+                class_mask = np.where(label_map == cls, 1, 0)
 
-        return generate_overlay_image(rgb_image, label_map)
+                # Assign a random color to the current class
+                color = tuple(np.random.choice(range(256), size=3).tolist())
+
+                overlay_img = overlay_segmentation(rgb_image, class_mask, color)
+
+                # Save the overlay image
+                args = self.args
+                dump_dir = "{}/dump/{}/".format(args.dump_location,
+                                        args.exp_name)
+                ep_dir = '{}/episodes/thread_{}/eps_{}/'.format(
+                dump_dir, self.rank, self.episode_no)
+                
+                if not os.path.exists(ep_dir):
+                    os.makedirs(ep_dir)
+
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f'{ep_dir}{self.rank}-{self.episode_no}-Vis-{self.timestep}-{int(cls)}-{timestamp}.png'
+                cv2.imwrite(filename, overlay_img)
+                print(f"Overlay image for class {int(cls)} saved as {filename}")
+
+        assert rgb_image.shape[:2] == label_map.shape, "Dimensions of RGB image and label map must match"
+        generate_overlay_images(rgb_image, label_map)

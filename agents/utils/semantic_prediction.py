@@ -170,6 +170,7 @@ class VisualizationDemo(object):
         # Convert image from OpenCV BGR format to Matplotlib RGB format.
 
         if visualize:
+
             predictions = all_predictions[0]
             image = image_list[0]
             visualizer = Visualizer(
