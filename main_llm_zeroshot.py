@@ -127,7 +127,7 @@ def main():
     torch.set_num_threads(1)
     envs = make_vec_envs(args)
     obs, infos = envs.reset()
-
+    
     torch.set_grad_enabled(False)
 
     # Initialize map variables:
@@ -556,7 +556,7 @@ def main():
                                                 ].argmax(0).cpu().numpy()
 
     obs, _, done, infos = envs.plan_act_and_preprocess(planner_inputs)
-
+    
     start = time.time()
     g_reward = 0
 

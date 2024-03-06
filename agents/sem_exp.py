@@ -18,7 +18,7 @@ import agents.utils.visualization as vu
 from RedNet.RedNet_model import load_rednet
 from constants import mp_categories_mapping
 import torch
-
+import language_tools
 
 class Sem_Exp_Env_Agent(ObjectGoal_Env):
     """The Sem_Exp environment agent class. A seperate Sem_Exp_Env_Agent class
@@ -384,8 +384,8 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
         rgb = obs[:, :, :3]
         depth = obs[:, :, 3:4]
         semantic = obs[:,:,4:5].squeeze()
-
-
+        fileName = self._save_as_png(rgb)
+        language_tools.ask_vision(image_path=fileName)
         if args.use_gtsem:
             self.rgb_vis = rgb
             sem_seg_pred = np.zeros((rgb.shape[0], rgb.shape[1], 15 + 1))
@@ -398,7 +398,7 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
             
             sem_seg_pred = np.zeros((rgb.shape[0], rgb.shape[1], 15 + 1)) 
 
-            self._viz_seg(rgb, red_semantic_pred)
+            # self._viz_seg(rgb, red_semantic_pred) # if you want to visualize the segmentation from rednet
             for i in range(0, 15):
                 # print(mp_categories_mapping[i])
                 
@@ -557,8 +557,6 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
                 self.rank, self.episode_no, self.timestep)
             cv2.imwrite(fn, self.vis_image)
 
-
-
     def _viz_seg(self, rgb_image, label_map):
         import numpy as np
         import cv2
@@ -626,3 +624,25 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
 
         assert rgb_image.shape[:2] == label_map.shape, "Dimensions of RGB image and label map must match"
         generate_overlay_images(rgb_image, label_map)
+        
+    def _save_as_png(self, array):
+        args = self.args
+        dump_dir = "{}/dump/{}/".format(args.dump_location, args.exp_name)
+        ep_dir = '{}/episodes/thread_{}/eps_{}/'.format(dump_dir, self.rank, self.episode_no)
+        
+        if not os.path.exists(ep_dir):
+            os.makedirs(ep_dir)
+
+        filename = f'{ep_dir}{self.rank}-{self.episode_no}-Obs-{self.timestep}.png'
+
+        # Convert the numpy array to a PIL image
+        image = Image.fromarray(array.astype('uint8'))
+
+        # Save the image
+        image.save(filename)
+        return filename
+
+
+
+
+

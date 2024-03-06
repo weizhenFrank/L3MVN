@@ -353,8 +353,7 @@ class ObjectGoal_Env(habitat.RLEnv):
         # print("obs shape: ,", obs.shape)
         rgb = obs['rgb'].astype(np.uint8)
         depth = obs['depth']
-        # from remote_pdb import RemotePdb
-        # RemotePdb('127.0.0.1', 2222).set_trace()
+
         semantic = self._preprocess_semantic(obs["semantic"])
         # print("rgb shape: ,", rgb.shape)
         # print("depth shape: ,", depth.shape)
@@ -424,8 +423,7 @@ class ObjectGoal_Env(habitat.RLEnv):
         se = list(set(semantic.ravel()))
         # print(se) # []
         for i in range(len(se)):
-            # from remote_pdb import RemotePdb
-            # RemotePdb('127.0.0.1', 4444).set_trace()
+
             if self.scene.objects[se[i]] is not None and self.scene.objects[se[i]].category.name() in coco_categories:
                 # print(self.scene.objects[se[i]].id) 
                 # print(self.scene.objects[se[i]].category.index()) 

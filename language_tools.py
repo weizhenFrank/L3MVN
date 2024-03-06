@@ -298,6 +298,8 @@ def ask_gpts_v2(goal, object_clusters, env="a house", positives=True, num_sample
             options += f"{i+1}. {cluser_string[:-2]}\n"
         if positives:
             messages.append({"role": "user", "content": f"I observe the following clusters of objects while exploring {env}:\n\n {options}\nWhere should I search next if I am looking for {goal}?"})
+            print(f"I observe the following images while exploring {env}:\n\n {options}\nWhere should I search next if I am looking for {goal}?")
+
         else:
             messages.append({"role": "user", "content": f"I observe the following clusters of objects while exploring {env}:\n\n {options}\nWhere should I avoid spending time searching if I am looking for {goal}?"})
 
@@ -336,6 +338,69 @@ def ask_gpts_v2(goal, object_clusters, env="a house", positives=True, num_sample
 
         return answer_counts, reasonings
     raise Exception("Object categories must be non-empty")
+
+
+@retry.retry(tries=5)
+def ask_vision(num_samples=1, model="gpt-4-vision-preview", image_path="obs.jpg", detail="low"):
+    import base64
+    import requests
+    import os
+    import json
+
+    # Function to encode the image
+    def encode_image(image_path):
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')
+
+    messages=[
+        {"role": "system", "content": "You are a robotic home assistant that can help people find objects. You have an observation of the house as image."},
+    ]
+    # messages = []
+    # Getting the base64 string
+    base64_image = encode_image(image_path)
+
+    user_message =  {
+        "role": "user",
+        "content": [
+            {
+            "type": "text",
+            "text": "So desbribe the image that can provide useful information for object navigation. The description should be informative but concise"
+            },
+            {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{base64_image}",
+                "detail": f"{detail}"
+            }
+            }
+        ]
+        }
+    
+    messages.append(user_message)
+    import time
+    now = time.time()
+    completion = openai.ChatCompletion.create(
+            model=model, temperature=1,
+            n=num_samples, messages=messages, max_tokens=300)
+       
+    answers = []
+    for choice in completion.choices:
+        try:
+            complete_response = choice.message["content"]
+            # Make the response all lowercase
+            complete_response = complete_response.lower()
+            answers.append(complete_response)
+        except:
+            answers.append([])
+    # Define the JSON file path
+    json_file_path = os.path.splitext(image_path)[0] + '.json'
+
+    # Save the response to a JSON file
+    with open(json_file_path, 'w') as json_file:
+        json.dump({"response": completion}, json_file, indent=4)
+
+    return answers
+
 
 @retry.retry(tries=5)
 def greedy_ask_gpt(goal, object_clusters, model="gpt-4-0125-preview", env="a house"):
@@ -524,5 +589,6 @@ def score_func(sampling_mathod, frontiers, goal, reasoning_enabled=False, model=
         return [wp*scores[i] - wn*n_scores[i] for i in range(len(scores))], reasoning
     else:
         raise Exception("Invalid sampling method")
+        
         
         
