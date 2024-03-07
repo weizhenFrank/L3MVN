@@ -625,4 +625,4 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
                 print(f"Overlay image for class {int(cls)} saved as {filename}")
 
         assert rgb_image.shape[:2] == label_map.shape, "Dimensions of RGB image and label map must match"
-        generate_overlay_images(rgb_image, label_map)
+        # generate_overlay_images(rgb_image, label_map)
