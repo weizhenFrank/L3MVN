@@ -138,7 +138,7 @@ def main():
     # 4. Past Agent Locations
     # 5,6,7,.. : Semantic Categories
     nc = args.num_sem_categories + 4  # num channels
-
+    nc += 1  # for scene description from GPT4V
     # Calculating full and local map sizes
     map_size = args.map_size_cm // args.map_resolution
     full_w, full_h = map_size, map_size # 2400/5=480
@@ -769,10 +769,12 @@ def main():
                                                     (local_w/6, local_h/6),
                                                     (local_w, local_h))
                     objs_list = []
+                    
                     for se_cn in range(args.num_sem_categories - 1):
                         if local_map[e][se_cn + 4, fmb[0]:fmb[1], fmb[2]:fmb[3]].sum() != 0.:
                             objs_list.append(hm3d_category[se_cn])
-                    
+                            import pdb; pdb.set_trace()
+
                     clusters.append(objs_list)
 
                 # Use the new LLM tool to get scores for each cluster

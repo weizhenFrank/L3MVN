@@ -44,13 +44,13 @@ class Semantic_Mapping(nn.Module):
         self.pool = ChannelPool(1)
 
         vr = self.vision_range
-
+        # for init_grid and feat, add an extra channel for the description of GPT4V
         self.init_grid = torch.zeros(
-            args.num_processes, 1 + self.num_sem_categories, vr, vr,
+            args.num_processes, 1 + self.num_sem_categories + 1, vr, vr,
             self.max_height - self.min_height
         ).float().to(self.device)
         self.feat = torch.ones(
-            args.num_processes, 1 + self.num_sem_categories,
+            args.num_processes, 1 + self.num_sem_categories + 1,
             self.screen_h // self.du_scale * self.screen_w // self.du_scale
         ).float().to(self.device)
 

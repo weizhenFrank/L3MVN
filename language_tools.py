@@ -383,23 +383,23 @@ def ask_vision(num_samples=1, model="gpt-4-vision-preview", image_path="obs.jpg"
             model=model, temperature=1,
             n=num_samples, messages=messages, max_tokens=300)
        
-    answers = []
-    for choice in completion.choices:
-        try:
-            complete_response = choice.message["content"]
-            # Make the response all lowercase
-            complete_response = complete_response.lower()
-            answers.append(complete_response)
-        except:
-            answers.append([])
+    # answers = []
+    # for choice in completion.choices:
+    #     try:
+    #         complete_response = choice.message["content"]
+    #         # Make the response all lowercase
+    #         complete_response = complete_response.lower()
+    #         answers.append(complete_response)
+    #     except:
+    #         answers.append([])
     # Define the JSON file path
     json_file_path = os.path.splitext(image_path)[0] + '.json'
 
     # Save the response to a JSON file
     with open(json_file_path, 'w') as json_file:
         json.dump({"response": completion}, json_file, indent=4)
-
-    return answers
+    # print(answers)
+    # return answers
 
 
 @retry.retry(tries=5)
@@ -589,6 +589,27 @@ def score_func(sampling_mathod, frontiers, goal, reasoning_enabled=False, model=
         return [wp*scores[i] - wn*n_scores[i] for i in range(len(scores))], reasoning
     else:
         raise Exception("Invalid sampling method")
+    
+def extract_info_from_key(key, args):
+    import os
+    import json
+    process_rank = key // 10000000
+    episode_number = (key % 10000000) // 1000
+    timestep = key % 1000
+    
+    dump_dir = "{}/dump/{}/".format(args.dump_location, args.exp_name)
+    ep_dir = '{}/episodes/thread_{}/eps_{}/'.format(dump_dir, process_rank, episode_number)
+    filename = f'{ep_dir}{process_rank}-{episode_number}-Obs-{timestep}.json'
+    if os.path.isfile(filename):
+        with open(filename, 'r') as file:
+            json_data = file.read()
+            data = json.loads(json_data)
+            choices = data['response']['choices']
+            if choices:
+                return choices[0]['message']['content']
+            else:
+                return "No response"
+    return "No response"
         
         
         
