@@ -138,7 +138,7 @@ def main():
     # 4. Past Agent Locations
     # 5,6,7,.. : Semantic Categories
     nc = args.num_sem_categories + 4  # num channels
-    nc += 1  # for scene description from GPT4V
+    # nc += 1  # for scene description from GPT4V
     # Calculating full and local map sizes
     map_size = args.map_size_cm // args.map_resolution
     full_w, full_h = map_size, map_size # 2400/5=480

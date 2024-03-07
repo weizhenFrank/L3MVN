@@ -396,7 +396,7 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
             red_semantic_pred, semantic_pred = self._get_sem_pred(
                 rgb.astype(np.uint8), depth, use_seg=use_seg)
             # add additional channels for the description of GPT4V
-            sem_seg_pred = np.zeros((rgb.shape[0], rgb.shape[1], 15 + 1 + 1)) 
+            sem_seg_pred = np.zeros((rgb.shape[0], rgb.shape[1], 15 + 1)) 
 
             # self._viz_seg(rgb, red_semantic_pred) # if you want to visualize the segmentation from rednet
             for i in range(0, 15):
@@ -410,7 +410,7 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
             sem_seg_pred[:,:,4][semantic_pred[:,:,4] == 1] = 1
             sem_seg_pred[:,:,5][semantic_pred[:,:,5] == 1] = 1
             # last channel for the description of GPT4V
-            sem_seg_pred[:, :, -1] = self._generate_key()
+            # sem_seg_pred[:, :, -1] = self._generate_key()
         # sem_seg_pred = self._get_sem_pred(
         #     rgb.astype(np.uint8), depth, use_seg=use_seg)
 
