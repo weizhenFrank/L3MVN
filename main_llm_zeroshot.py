@@ -773,7 +773,6 @@ def main():
                     for se_cn in range(args.num_sem_categories - 1):
                         if local_map[e][se_cn + 4, fmb[0]:fmb[1], fmb[2]:fmb[3]].sum() != 0.:
                             objs_list.append(hm3d_category[se_cn])
-                            import pdb; pdb.set_trace()
 
                     clusters.append(objs_list)
 

@@ -298,7 +298,7 @@ def ask_gpts_v2(goal, object_clusters, env="a house", positives=True, num_sample
             options += f"{i+1}. {cluser_string[:-2]}\n"
         if positives:
             messages.append({"role": "user", "content": f"I observe the following clusters of objects while exploring {env}:\n\n {options}\nWhere should I search next if I am looking for {goal}?"})
-            print(f"I observe the following images while exploring {env}:\n\n {options}\nWhere should I search next if I am looking for {goal}?")
+            print(f"I observe the following objects while exploring {env}:\n\n {options}\nWhere should I search next if I am looking for {goal}?")
 
         else:
             messages.append({"role": "user", "content": f"I observe the following clusters of objects while exploring {env}:\n\n {options}\nWhere should I avoid spending time searching if I am looking for {goal}?"})
