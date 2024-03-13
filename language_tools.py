@@ -4,7 +4,9 @@ import re
 import numpy as np
 from enum import Enum
 import torch
-
+import base64
+import os
+import json
 USER_EXAMPLE_1 = """You see the following clusters of objects:
 
 1. door
@@ -353,7 +355,7 @@ def ask_vision(num_samples=1, model="gpt-4-vision-preview", image_path="obs.jpg"
             return base64.b64encode(image_file.read()).decode('utf-8')
 
     messages=[
-        {"role": "system", "content": "You are a robotic home assistant that can help people find objects. You have an observation of the house as image."},
+        {"role": "system", "content": "You are a robotic home assistant that can help people find objects. You have an observation of the house as images."},
     ]
     # messages = []
     # Getting the base64 string
@@ -400,7 +402,6 @@ def ask_vision(num_samples=1, model="gpt-4-vision-preview", image_path="obs.jpg"
         json.dump({"response": completion}, json_file, indent=4)
     # print(answers)
     # return answers
-
 
 @retry.retry(tries=5)
 def greedy_ask_gpt(goal, object_clusters, model="gpt-4-0125-preview", env="a house"):
@@ -612,4 +613,97 @@ def extract_info_from_key(key, args):
     return "No response"
         
         
+@retry.retry(tries=5)
+def vision_nav(key_list, goal='toilet', args=None, num_samples=1, model="gpt-4-vision-preview", detail="low"):
+    img_list = decode_img_list(key_list, args)
+    messages=[
+        {"role": "system", "content": "You are a robotic home assistant that can find one object. There's several frontiers region in the house you can explore. Frontier index starts from 0. For each frontier, you have observation as images."}
+    ]
+
+    user_message =  {
+        "role": "user",
+        "content": []
+        }
+    user_message['content'] += create_content(img_list, detail, goal)
+    messages.append(user_message)
+
+    completion = openai.ChatCompletion.create(
+            model=model, temperature=1,
+            n=num_samples, messages=messages, max_tokens=300)
+    ans = 0
+    if img_list[0][0]:
         
+        json_file_path = os.path.splitext(img_list[0][0])[0] + '.json'
+
+    # Save the response to a JSON file
+    with open(json_file_path, 'w') as json_file:
+        json.dump({"response": completion}, json_file, indent=4)
+        
+    try:
+        complete_response = completion["choices"][0]["message"]["content"]
+        # Make the response all lowercase
+        ans = complete_response.lower().split("answer:")[1].split("\n")[0]
+        try:
+            return int(ans)
+        except:
+            raise Exception("Invalid answer")
+    except:
+        return ans
+
+
+# Function to encode the image
+def encode_image(image_path):
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode('utf-8')
+    
+def create_content(image_list, detail, goal):
+    # Getting the base64 string
+    contents = []
+    for ind, frontier in enumerate(image_list):
+        text_promot = {
+            "type": "text",
+            "text": f"For frontier {ind}, you observed following images"
+            }
+        contents.append(text_promot)
+        for i in frontier:
+            base64_image = encode_image(i)
+            # base64_image = ""
+            sub_content = {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{base64_image}",
+                        "detail": f"{detail}"
+                    }
+                    }
+            contents.append(sub_content)
+    query = {
+        "type": "text",
+        "text": f"""For the above frontiers, the goal object is {goal}, which frontier should be explored next?\n
+         The response MUST follow the format:\n"
+         Answer:<your answer here, index of frontier only>"""
+        }
+        # query = {
+        # "type": "text",
+        # "text": f"""How many frontiers now you see? how many images you see in each frontier?"""
+        # }
+    
+    contents.append(query)
+    return contents
+
+def decode_img_list(frontiers, args):
+    img_list = []
+    for frontier_keys in frontiers:
+        frontier = []
+        for key in frontier_keys:
+            process_rank = key // 10000000
+            episode_number = (key % 10000000) // 1000
+            timestep = key % 1000
+
+            ep_dir = f"{args.dump_location}/dump/{args.exp_name}/episodes/thread_{process_rank}/eps_{episode_number}/"
+            filename = f'{ep_dir}{process_rank}-{episode_number}-Obs-{timestep}.png'
+            frontier.append(filename)
+        img_list.append(frontier)
+    return img_list
+
+    
+    

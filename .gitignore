@@ -3,4 +3,5 @@ data/*
 *.pth
 tmp/*
 gibson_tiny/
-*ipynb
+.*ipynb
+lfg_demo.ipynb
