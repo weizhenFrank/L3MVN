@@ -818,11 +818,11 @@ def main():
                             frontier_rgb_keys_list[lay].append(key)
                         
                 # vision nav
-                try:
-                    clu_index = language_tools.vision_nav(frontier_rgb_keys_list, cname, args)
-                except:
-                    clu_index = 0
-                
+                # try:
+                #     clu_index = language_tools.vision_nav(frontier_rgb_keys_list, cname, args)
+                # except:
+                #     clu_index = 0
+                clu_index = 0
                 frontier_score_list[e].extend([torch.tensor(1., device=device) if i == clu_index else torch.tensor(0., device=device) for i in range(tpm)])
 
                 # clusters = []
