@@ -682,10 +682,7 @@ def create_content(image_list, detail, goal):
          The response MUST follow the format:\n"
          Answer:<your answer here, index of frontier only>"""
         }
-        # query = {
-        # "type": "text",
-        # "text": f"""How many frontiers now you see? how many images you see in each frontier?"""
-        # }
+
     
     contents.append(query)
     return contents
