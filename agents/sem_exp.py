@@ -80,6 +80,7 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
         self.fail_case['exploration'] = 0
 
         self.eve_angle = 0
+        self.rgb_image_metadata = {}  # Dictionary to store metadata for each RGB image
 
     def reset(self):
         args = self.args
@@ -108,7 +109,7 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
         self.eve_angle_old = 0
 
         info['eve_angle'] = self.eve_angle
-
+        self.info['rgb_image_metadata'] = self.rgb_image_metadata
 
         if args.visualize or args.print_images:
             self.vis_image = vu.init_vis_image(self.goal_name, self.legend)
@@ -189,7 +190,7 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
             self.obs = obs
             self.info = info
             info['eve_angle'] = self.eve_angle
-
+            info['rgb_image_metadata'] = self.rgb_image_metadata
 
             # e_time = time.time()
             # ss_time = e_time - c_time
@@ -385,7 +386,15 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
         depth = obs[:, :, 3:4]
         semantic = obs[:,:,4:5].squeeze()
         fileName = self._save_as_png(rgb)
-        language_tools.ask_vision(image_path=fileName)
+        # Generate a unique key for the current RGB image
+        unique_key = self._generate_key()
+        # language_tools.ask_vision(image_path=fileName)
+        # Store the metadata for the RGB image
+        self.rgb_image_metadata[unique_key] = {
+            'location': self.curr_loc,
+            'orientation': self.curr_loc[2] if self.curr_loc is not None else None,
+            'fov': args.hfov
+        }
         if args.use_gtsem:
             self.rgb_vis = rgb
             sem_seg_pred = np.zeros((rgb.shape[0], rgb.shape[1], 15 + 1))

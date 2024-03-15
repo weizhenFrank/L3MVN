@@ -1,4 +1,5 @@
 from collections import deque, defaultdict
+import math
 from itertools import count
 import os
 import logging
@@ -31,6 +32,7 @@ import skimage.morphology
 import cv2
 
 
+
 from model import Semantic_Mapping, FeedforwardNet
 from envs.utils.fmm_planner import FMMPlanner
 from envs import make_vec_envs
@@ -44,7 +46,16 @@ import language_tools
 os.environ["OMP_NUM_THREADS"] = "1"
 
 
+def get_max_range(frontier_map, x, y):
+    try:
+        frontier_coords = np.argwhere(frontier_map == 1)
+        frontier_distances = np.sqrt((frontier_coords[:, 0] - x)**2 + (frontier_coords[:, 1] - y)**2)
+        max_frontier_distance = np.max(frontier_distances)
 
+        max_range = max_frontier_distance * 1.2  # Adjust the factor as needed
+        return max_range
+    except:
+        return 480
 
 def find_big_connect(image):
     img_label, num = measure.label(image, connectivity=2, return_num=True)#输出二值图像中所有的连通域
@@ -127,7 +138,6 @@ def main():
     torch.set_num_threads(1)
     envs = make_vec_envs(args)
     obs, infos = envs.reset()
-    
     torch.set_grad_enabled(False)
 
     # Initialize map variables:
@@ -761,44 +771,98 @@ def main():
                 #     else:
                 #         frontier_score_list[e].append(Goal_score[lay]/max(Goal_score) * 0.1 + 0.1) 
                 
-                clusters = []
+    
+                # Find the RGB images that overlap with the frontier regions
+                obstacle_map = (local_map[e, 0, :, :].cpu().numpy() > 0.5).astype(bool)
+                frontier_map = target_edge_map[e].astype(bool)
 
-                for lay in range(tpm):
-                    f_pos = np.argwhere(target_point_map[e] == lay+1)
-                    fmb = get_frontier_boundaries((f_pos[0][0], f_pos[0][1]),
+                frontier_rgb_keys_list = [[] for _ in range(tpm)]
+                for ind, (key, metadata) in enumerate(infos[e]['rgb_image_metadata'].items()):
+                    if ind == 0:
+                        continue
+                    x, y, z = metadata['location']
+                    max_range = get_max_range(frontier_map, x, y)
+                    orientation = metadata['orientation']
+                    fov = metadata['fov']
+                    
+                    # Calculate the vertices of the FOV triangle
+                    angle_rad = math.radians(orientation)
+                    half_fov_rad = math.radians(fov / 2)
+                    
+                    # Create a binary mask for the FOV triangle
+                    fov_mask = np.zeros((local_w, local_h), dtype=np.uint8)
+                    triangle_vertices = np.array([[x, y],
+                                                [x + max_range * math.cos(angle_rad - half_fov_rad), y + max_range * math.sin(angle_rad - half_fov_rad)],
+                                                [x + max_range * math.cos(angle_rad + half_fov_rad), y + max_range * math.sin(angle_rad + half_fov_rad)]], np.int32)
+                    cv2.fillConvexPoly(fov_mask, triangle_vertices, 1)
+                    
+                    # Calculate the intersection of the FOV triangle with the obstacle map and frontiers
+                    visible_mask = np.bitwise_and(fov_mask.astype(bool), ~obstacle_map)
+                    for lay in range(tpm):
+                        f_pos = np.argwhere(target_point_map[e] == lay + 1)
+                        fmb = get_frontier_boundaries((f_pos[0][0], f_pos[0][1]),
                                                     (local_w/6, local_h/6),
                                                     (local_w, local_h))
-                    objs_list = []
+                        frontier_map_single = np.zeros_like(frontier_map)
+                        frontier_map_single[fmb[0]:fmb[1], fmb[2]:fmb[3]] = frontier_map[fmb[0]:fmb[1], fmb[2]:fmb[3]]
+                        
+                        frontier_area = np.sum(frontier_map_single)
+                        
+                        # Calculate the intersection of the FOV triangle with the obstacle map and single frontier
+                        intersection_mask = np.bitwise_and(visible_mask, frontier_map_single)
+
+                        intersection_area = np.sum(intersection_mask)
+                        overlap_ratio = intersection_area / frontier_area
+
+                        if overlap_ratio > 0.3:
+                            frontier_rgb_keys_list[lay].append(key)
+                        
+                # vision nav
+                try:
+                    clu_index = language_tools.vision_nav(frontier_rgb_keys_list, cname, args)
+                except:
+                    clu_index = 0
+                
+                frontier_score_list[e].extend([torch.tensor(1., device=device) if i == clu_index else torch.tensor(0., device=device) for i in range(tpm)])
+
+                # clusters = []
+
+                # for lay in range(tpm):
+                #     f_pos = np.argwhere(target_point_map[e] == lay+1)
+                #     fmb = get_frontier_boundaries((f_pos[0][0], f_pos[0][1]),
+                #                                     (local_w/6, local_h/6),
+                #                                     (local_w, local_h))
+                #     objs_list = []
                     
-                    for se_cn in range(args.num_sem_categories - 1):
-                        if local_map[e][se_cn + 4, fmb[0]:fmb[1], fmb[2]:fmb[3]].sum() != 0.:
-                            objs_list.append(hm3d_category[se_cn])
+                #     for se_cn in range(args.num_sem_categories - 1):
+                #         if local_map[e][se_cn + 4, fmb[0]:fmb[1], fmb[2]:fmb[3]].sum() != 0.:
+                #             objs_list.append(hm3d_category[se_cn])
 
-                    clusters.append(objs_list)
-
+                #     clusters.append(objs_list)
                 # Use the new LLM tool to get scores for each cluster
-                if clusters:
-                    # scores, reasoning = language_tools.query_llm(language_tools.LanguageMethod.SAMPLING_POSTIIVE, clusters, cname, reasoning_enabled=args.reasoning, model=args.llm)
-                    scores, reasoning =  language_tools.score_func(args.sam_method, clusters, cname, reasoning_enabled=args.reasoning, model=args.llm)
+                # if clusters:
+                #     # scores, reasoning = language_tools.query_llm(language_tools.LanguageMethod.SAMPLING_POSTIIVE, clusters, cname, reasoning_enabled=args.reasoning, model=args.llm)
+                #     scores, reasoning =  language_tools.score_func(args.sam_method, clusters, cname, reasoning_enabled=args.reasoning, model=args.llm)
                     
-                    # Convert scores to tensors and ensure they are on the same device
-                    scores_tensors = [torch.tensor(score, dtype=torch.float).to(device) for score in scores]
+                #     # Convert scores to tensors and ensure they are on the same device
+                #     scores_tensors = [torch.tensor(score, dtype=torch.float).to(device) for score in scores]
                     
-                    # # Extend the frontier score list with the new tensor scores
-                    frontier_score_list[e].extend(scores_tensors)
+                #     # # Extend the frontier score list with the new tensor scores
+                #     frontier_score_list[e].extend(scores_tensors)
                     
-                    # # Stack the scores tensors to apply softmax
-                    # stacked_scores = torch.stack(scores_tensors)
-                    # softmaxed_scores = F.softmax(stacked_scores, dim=0)
-                    # final_scores = [score for score in softmaxed_scores]
-                    # # Update the frontier score list with the softmaxed scores
-                    # frontier_score_list[e].extend(final_scores)
-                else:
-                    # Extend with default scores, ensuring they are tensors on the correct CUDA device
-                    logging.warning(f"No clusters found for environment {e}. Using default scores.")
-                    print("No clusters found for environment {e}. Using default scores.")
-                    default_scores = [torch.tensor(0.1, device) for _ in range(tpm)]
-                    frontier_score_list[e].extend(default_scores)
+                #     # # Stack the scores tensors to apply softmax
+                #     # stacked_scores = torch.stack(scores_tensors)
+                #     # softmaxed_scores = F.softmax(stacked_scores, dim=0)
+                #     # final_scores = [score for score in softmaxed_scores]
+                #     # # Update the frontier score list with the softmaxed scores
+                #     # frontier_score_list[e].extend(final_scores)
+                # else:
+                #     # Extend with default scores, ensuring they are tensors on the correct CUDA device
+                #     logging.warning(f"No clusters found for environment {e}. Using default scores.")
+                #     print("No clusters found for environment {e}. Using default scores.")
+                #     default_scores = [torch.tensor(0.1, device) for _ in range(tpm)]
+                #     frontier_score_list[e].extend(default_scores)
+
 
 
 
