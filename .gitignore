@@ -6,3 +6,5 @@ tmp/*
 gibson_tiny/
 .*ipynb
 lfg_demo.ipynb
+habitat-sim
+
