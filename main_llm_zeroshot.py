@@ -13,6 +13,7 @@ import numpy as np
 from torch.autograd import Variable
 import torch.nn.functional as F
 import openai
+import datetime
 from transformers import (
     BertTokenizer,
     BertForMaskedLM,
@@ -30,6 +31,7 @@ from skimage import measure
 import skimage.morphology
 
 import cv2
+from PIL import Image
 
 
 
@@ -43,8 +45,100 @@ from constants import category_to_id, hm3d_category, category_to_id_gibson
 
 import envs.utils.pose as pu
 import language_tools
+from constants import color_palette
+
 os.environ["OMP_NUM_THREADS"] = "1"
 
+
+
+from PIL import Image
+import numpy as np
+import datetime
+import os
+from PIL import Image, ImageDraw
+from agents.utils import visualization
+
+
+def visualize_frontiers(sem_map, frontier_boundaries, args, process_rank, episode_number, rgb_path, map_pred, exp_pred, target_edge_map, local_goal_maps, triangle_vertices_list, out_path=None):
+    local_w = map_pred.shape[0]
+    map_edge = target_edge_map
+    
+    goal = local_goal_maps
+    rgb = Image.open(rgb_path)
+    legend = cv2.imread('docs/legend.png')
+    vis_image = visualization.init_vis_image("Frontiers", legend)
+    sem_map += 5  # Adjust this value based on your semantic map preprocessing needs
+    no_cat_mask = sem_map == 20
+    map_mask = np.rint(map_pred) == 1
+    exp_mask = np.rint(exp_pred) == 1
+    edge_mask = map_edge == 1
+
+    sem_map[no_cat_mask] = 0
+    m1 = np.logical_and(no_cat_mask, exp_mask)
+    sem_map[m1] = 2
+
+    m2 = np.logical_and(no_cat_mask, map_mask)
+    sem_map[m2] = 1
+
+    sem_map[edge_mask] = 3
+    selem = skimage.morphology.disk(4)
+    goal_mat = 1 - skimage.morphology.binary_dilation(
+            goal, selem) != True
+
+    goal_mask = goal_mat == 1
+    sem_map[goal_mask] = 4
+    if np.sum(goal) == 1:
+        f_pos = np.argwhere(goal == 1)
+        goal_fmb = skimage.draw.circle_perimeter(int(f_pos[0][0]), int(f_pos[0][1]), int(local_w/4-2))
+        goal_fmb[0][goal_fmb[0] > local_w-1] = local_w-1
+        goal_fmb[1][goal_fmb[1] > local_w-1] = local_w-1
+        goal_fmb[0][goal_fmb[0] < 0] = 0
+        goal_fmb[1][goal_fmb[1] < 0] = 0
+        goal_mask[goal_fmb[0], goal_fmb[1]] = 1
+        sem_map[goal_mask] = 4
+    color_pal = [int(x * 255) for x in color_palette]  # Ensure args has color_palette attribute
+    sem_map_vis = Image.new("P", (sem_map.shape[1], sem_map.shape[0]))
+    sem_map_vis.putpalette(color_pal)
+    sem_map_vis.putdata(sem_map.flatten().astype(np.uint8))
+    sem_map_vis = sem_map_vis.convert("RGB")
+    sem_map_vis = np.array(sem_map_vis)
+    sem_map_vis = np.flipud(sem_map_vis)
+
+    sem_map_pil = Image.fromarray(sem_map_vis.astype('uint8'), 'RGB')
+    sem_map_pil = sem_map_pil.resize((480, 480), Image.NEAREST)
+
+    draw = ImageDraw.Draw(sem_map_pil)
+    
+
+    # Plot triangle vertices on the semantic map image
+    for triangle_vertices in triangle_vertices_list:
+        triangle_vertices_scaled = triangle_vertices.copy()
+        triangle_vertices_scaled[:, 0] = (triangle_vertices_scaled[:, 0] * 480 / local_w).astype(int)
+        triangle_vertices_scaled[:, 1] = (480 - triangle_vertices_scaled[:, 1] * 480 / local_w).astype(int)
+        draw.polygon(list(triangle_vertices_scaled.flatten()), outline=(0, 255, 0), width=2)
+
+
+    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0)]  # Add more colors if needed
+
+    for i, fmb in enumerate(frontier_boundaries):
+        color = colors[i % len(colors)]
+        draw.rectangle([fmb[2], 480 - fmb[1], fmb[3], 480 - fmb[0]], outline=color, width=2)
+
+    now = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    ep_dir = os.path.join(args.dump_location, "dump", args.exp_name, "episodes", f"thread_{process_rank}", f"gstep_{episode_number}")
+    os.makedirs(ep_dir, exist_ok=True)
+
+    # Composite the RGB and semantic map images onto the vis_image
+    vis_image[50:530, 15:655] = np.array(rgb.resize((640, 480), Image.ANTIALIAS))
+    vis_image[50:530, 670:1150] = np.array(sem_map_pil)
+
+    # Save the final visualization image
+    if out_path:
+        final_image_path = out_path
+    else:
+        final_image_path = os.path.join(ep_dir, f'{process_rank}-{episode_number}-vis-{now}.png')
+    # import pdb; pdb.set_trace()
+    cv2.imwrite(final_image_path, cv2.cvtColor(vis_image, cv2.COLOR_RGB2BGR))
 
 def get_max_range(frontier_map, x, y):
     try:
@@ -55,7 +149,9 @@ def get_max_range(frontier_map, x, y):
         max_range = max_frontier_distance * 1.2  # Adjust the factor as needed
         return max_range
     except:
-        return 480
+        return 50
+    # print("max_range: ", frontier_map.shape[0]/2)
+    # return frontier_map.shape[0]/2
 
 def find_big_connect(image):
     img_label, num = measure.label(image, connectivity=2, return_num=True)#输出二值图像中所有的连通域
@@ -318,6 +414,7 @@ def main():
         # traversible = 1 - traversible
         planner = FMMPlanner(traversible)
         goal_pose_map = np.zeros((local_ob_map.shape))
+
         pose_x = int(pose[0].cpu()) if int(pose[0].cpu()) < local_w-1 else local_w-1
         pose_y = int(pose[1].cpu()) if int(pose[1].cpu()) < local_w-1 else local_w-1
         goal_pose_map[pose_x, pose_y] = 1
@@ -730,7 +827,6 @@ def main():
                 target_edge_map[e], target_point_map[e], Goal_score = remove_small_points(_local_ob_map, target_edge, 4, local_pose_map) 
   
 
-
                 local_ob_map[e]=np.zeros((local_w,
                         local_h))
                 local_ex_map[e]=np.zeros((local_w,
@@ -777,16 +873,18 @@ def main():
                 frontier_map = target_edge_map[e].astype(bool)
 
                 frontier_rgb_keys_list = [[] for _ in range(tpm)]
+                triangle_vertices_list = []
+
                 for ind, (key, metadata) in enumerate(infos[e]['rgb_image_metadata'].items()):
                     if ind == 0:
                         continue
-                    x, y, z = metadata['location']
+                    x, y = metadata['location']
                     max_range = get_max_range(frontier_map, x, y)
                     orientation = metadata['orientation']
                     fov = metadata['fov']
                     
                     # Calculate the vertices of the FOV triangle
-                    angle_rad = math.radians(orientation)
+                    angle_rad = -orientation
                     half_fov_rad = math.radians(fov / 2)
                     
                     # Create a binary mask for the FOV triangle
@@ -794,6 +892,8 @@ def main():
                     triangle_vertices = np.array([[x, y],
                                                 [x + max_range * math.cos(angle_rad - half_fov_rad), y + max_range * math.sin(angle_rad - half_fov_rad)],
                                                 [x + max_range * math.cos(angle_rad + half_fov_rad), y + max_range * math.sin(angle_rad + half_fov_rad)]], np.int32)
+                   
+
                     cv2.fillConvexPoly(fov_mask, triangle_vertices, 1)
                     
                     # Calculate the intersection of the FOV triangle with the obstacle map and frontiers
@@ -814,15 +914,65 @@ def main():
                         intersection_area = np.sum(intersection_mask)
                         overlap_ratio = intersection_area / frontier_area
 
-                        if overlap_ratio > 0.3:
+                        if overlap_ratio > 0.5:
                             frontier_rgb_keys_list[lay].append(key)
+                            triangle_vertices_list.append(triangle_vertices)
                         
+                frontier_rgb_list = language_tools.decode_img_list(frontier_rgb_keys_list, args)
+                frontier_rgb_list = language_tools.sample_images(frontier_rgb_list, 8)
                 # vision nav
                 try:
                     clu_index = language_tools.vision_nav(frontier_rgb_keys_list, cname, args)
                 except:
                     clu_index = 0
-                # clu_index = 0
+                frontier_boundaries = []
+
+                clusters = []
+
+                for lay in range(tpm):
+
+                    f_pos = np.argwhere(target_point_map[e] == lay+1)
+                    fmb = get_frontier_boundaries((f_pos[0][0], f_pos[0][1]),
+                                                    (local_w/6, local_h/6),
+                                                    (local_w, local_h))
+                    objs_list = []
+                    
+                    for se_cn in range(args.num_sem_categories - 1):
+                        if local_map[e][se_cn + 4, fmb[0]:fmb[1], fmb[2]:fmb[3]].sum() != 0.:
+                            objs_list.append(hm3d_category[se_cn])
+
+                    clusters.append(objs_list)
+                    frontier_boundaries.append(fmb)
+
+                # Specify the filename
+                vis_img_path = None
+                if frontier_rgb_list and len(frontier_rgb_list[0]) > 0:
+                    filename = os.path.splitext(frontier_rgb_list[0][0])[0]
+                    filename = filename.split("Obs")[0] + 'Cnt-' + str(datetime.datetime.now().strftime('%Y-%m-%d-%H:%M:%S')) + '.txt'
+                    # Open the file in write mode ('w')
+                    with open(filename, 'w') as file:
+                        for ind, clu in enumerate(clusters):
+                            file.write(f'frontier {ind}\n')
+                            for item in clu:
+                                file.write(str(item) + '\n')
+                        # Iterate over each sublist in frontier_rgb_list
+                        for ind, sublist in enumerate(frontier_rgb_list):
+                            file.write(f'frontier {ind}\n')
+                            # Iterate over each item in the sublist
+                            for item in sublist:
+                                # Write the item followed by a newline
+                                file.write(str(item) + '\n')
+                    vis_img_path = filename.replace('.txt', '.png')
+                
+                rgb_debug_path = "./tmp/dump/0_frontier_viz_debug/episodes/thread_0/eps_1/0-1-Obs-0.png"
+                
+                visualize_frontiers(local_map[e, 4:, :, :].argmax(0).cpu().numpy(),
+                                    frontier_boundaries, args, e, step, rgb_debug_path, local_map[e, 0, :, :].cpu().numpy(),
+                                    local_map[e, 1, :, :].cpu().numpy(),
+                                    target_point_map[e],
+                                    local_goal_maps[e], triangle_vertices_list, out_path=vis_img_path)
+                
+                                
                 frontier_score_list[e].extend([torch.tensor(1., device=device) if i == clu_index else torch.tensor(0., device=device) for i in range(tpm)])
 
                 # clusters = []
@@ -839,6 +989,7 @@ def main():
                 #             objs_list.append(hm3d_category[se_cn])
 
                 #     clusters.append(objs_list)
+                
                 # Use the new LLM tool to get scores for each cluster
                 # if clusters:
                 #     # scores, reasoning = language_tools.query_llm(language_tools.LanguageMethod.SAMPLING_POSTIIVE, clusters, cname, reasoning_enabled=args.reasoning, model=args.llm)

@@ -81,7 +81,7 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
 
         self.eve_angle = 0
         self.rgb_image_metadata = {}  # Dictionary to store metadata for each RGB image
-
+        self.pos = None
     def reset(self):
         args = self.args
 
@@ -113,6 +113,8 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
 
         if args.visualize or args.print_images:
             self.vis_image = vu.init_vis_image(self.goal_name, self.legend)
+        
+        self.pos = None
 
         return obs, info
 
@@ -240,8 +242,9 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
         r, c = start_y, start_x
         start = [int(r * 100.0 / args.map_resolution - gx1),
                  int(c * 100.0 / args.map_resolution - gy1)]
+        
         start = pu.threshold_poses(start, map_pred.shape)
-
+                
         self.visited[gx1:gx2, gy1:gy2][start[0] - 0:start[0] + 1,
                                        start[1] - 0:start[1] + 1] = 1
 
@@ -252,6 +255,7 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
         last_start = [int(r * 100.0 / args.map_resolution - gx1),
                         int(c * 100.0 / args.map_resolution - gy1)]
         last_start = pu.threshold_poses(last_start, map_pred.shape)
+
         self.visited_vis[gx1:gx2, gy1:gy2] = \
             vu.draw_line(last_start, start,
                             self.visited_vis[gx1:gx2, gy1:gy2])
@@ -390,11 +394,15 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
         unique_key = self._generate_key()
         # language_tools.ask_vision(image_path=fileName)
         # Store the metadata for the RGB image
+        
         self.rgb_image_metadata[unique_key] = {
-            'location': self.curr_loc,
-            'orientation': self.curr_loc[2] if self.curr_loc is not None else None,
+            'location': self.pos[:2] if self.pos is not None else None,
+            'orientation': self.pos[2] if self.pos is not None else None,
             'fov': args.hfov
         }
+        # if self.pos is not None:
+        #     print("pos: ", self.pos)
+        #     fileName = self._save_as_png(rgb, self.pos[2])
         if args.use_gtsem:
             self.rgb_vis = rgb
             sem_seg_pred = np.zeros((rgb.shape[0], rgb.shape[1], 15 + 1))
@@ -549,7 +557,7 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
             * 480 / map_pred.shape[1],
             np.deg2rad(-start_o)
         )
-
+        self.pos = pos
         agent_arrow = vu.get_contour_points(pos, origin=(670, 50), size=10)
         color = (int(color_palette[11] * 255),
                  int(color_palette[10] * 255),
@@ -635,7 +643,7 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
         assert rgb_image.shape[:2] == label_map.shape, "Dimensions of RGB image and label map must match"
         generate_overlay_images(rgb_image, label_map)
         
-    def _save_as_png(self, array):
+    def _save_as_png(self, array, post_fix=""):
         args = self.args
         dump_dir = "{}/dump/{}/".format(args.dump_location, args.exp_name)
         ep_dir = '{}/episodes/thread_{}/eps_{}/'.format(dump_dir, self.rank, self.episode_no)
@@ -643,7 +651,7 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
         if not os.path.exists(ep_dir):
             os.makedirs(ep_dir)
 
-        filename = f'{ep_dir}{self.rank}-{self.episode_no}-Obs-{self.timestep}.png'
+        filename = f'{ep_dir}{self.rank}-{self.episode_no}-Obs-{self.timestep}{post_fix}.png'
 
         # Convert the numpy array to a PIL image
         image = Image.fromarray(array.astype('uint8'))

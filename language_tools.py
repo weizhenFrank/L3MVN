@@ -614,8 +614,11 @@ def extract_info_from_key(key, args):
         
         
 @retry.retry(tries=5)
-def vision_nav(key_list, goal='toilet', args=None, num_samples=1, model="gpt-4-vision-preview", detail="low"):
+def vision_nav(key_list, goal='toilet', args=None, num_samples=1, model="gpt-4-vision-preview", detail="low", downsampling=8):
+        
     img_list = decode_img_list(key_list, args)
+    if downsampling:
+        img_list = sample_images(img_list, downsampling)
     messages=[
         {"role": "system", "content": "You are a robotic home assistant that can find one object. There's several frontiers region in the house you can explore. Frontier index starts from 0. For each frontier, you have observation as images."}
     ]
@@ -703,4 +706,14 @@ def decode_img_list(frontiers, args):
     return img_list
 
     
-    
+def sample_images(image_paths, max_samples=5):
+    sampled_images = []
+    for path_list in image_paths:
+        if len(path_list) <= max_samples:
+            sampled_images.append(path_list)
+        else:
+            interval = len(path_list) / float(max_samples)
+            indices = [int(round(i * interval)) for i in range(max_samples)]
+            sampled_images.append([path_list[i] for i in indices])
+    return sampled_images
+
