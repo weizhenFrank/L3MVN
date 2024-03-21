@@ -7,6 +7,8 @@ import torch
 import base64
 import os
 import json
+from openai import OpenAI
+
 USER_EXAMPLE_1 = """You see the following clusters of objects:
 
 1. door
@@ -180,12 +182,12 @@ def find_first_integer(s):
 
 @retry.retry(tries=3, delay=1)
 def get_completion(prompt, max_tokens=100, temperature=0.7, top_p=1, frequency_penalty=0, presence_penalty=0, engine="davinci", echo=True):
-
+    client = OpenAI()
     # Save the prompt to a text file in tmp, give the file a random name
     # with open(f"tmp/prompt_{random.random()}.txt", "w+") as f:
     #      f.write(str(prompt))
 
-    response = openai.Completion.create(
+    response = client.chat.completions.create(
         engine=engine,
         prompt=prompt,
         max_tokens=max_tokens,
@@ -199,6 +201,7 @@ def get_completion(prompt, max_tokens=100, temperature=0.7, top_p=1, frequency_p
 
 @retry.retry(tries=5)
 def ask_gpt(goal, object_clusters):
+    client = OpenAI()
     system_message = "You are a robot exploring a house. You have access to semantic sensors that can detect objects. You are in the middle of the house with clusters of objects. Your goal is to figure near which cluster to explore next. Always provide reasoning and if there is no clear choice select answer 0" 
     messages=[
         {"role": "system", "content": system_message},
@@ -215,7 +218,7 @@ def ask_gpt(goal, object_clusters):
                 cluser_string += ob + ", "
             options += f"{i+1}. {cluser_string}\n"
         messages.append({"role": "user", "content": f"You see the following clusters of objects:\n\n {options}\nQuestion: You goal is to find a {goal}. Where should you go next? If there is not clear choice select answer 0.\n"})
-        completion = openai.ChatCompletion.create(
+        completion = client.chat.completions.create(
             model="gpt-4-0125-preview",
             messages=messages)
         complete_response = completion.choices[0].message["content"]
@@ -229,6 +232,7 @@ def ask_gpt(goal, object_clusters):
 
 @retry.retry(tries=5)
 def ask_gpts(goal, object_clusters, num_samples=10, model="gpt-4-0125-preview"):
+    client = OpenAI()
     system_message = "You are a robot exploring a house. You have access to semantic sensors that can detect objects. You are in the middle of the house with clusters of objects. Your goal is to figure near which cluster to explore next. Always provide reasoning and if there is no clear choice select answer 0" 
     messages=[
         {"role": "system", "content": system_message},
@@ -245,7 +249,7 @@ def ask_gpts(goal, object_clusters, num_samples=10, model="gpt-4-0125-preview"):
                 cluser_string += ob + ", "
             options += f"{i+1}. {cluser_string}\n"
         messages.append({"role": "user", "content": f"You see the following clusters of objects:\n\n {options}\nQuestion: You goal is to find a {goal}. Where should you go next? If there is not clear choice select answer 0.\n"})
-        completion = openai.ChatCompletion.create(
+        completion = client.chat.completions.create(
             model=model, temperature=1,
             n=num_samples, messages=messages)
         
@@ -275,7 +279,7 @@ def ask_gpts(goal, object_clusters, num_samples=10, model="gpt-4-0125-preview"):
 
 @retry.retry(tries=5)
 def ask_gpts_v2(goal, object_clusters, env="a house", positives=True, num_samples=5, model="gpt-4-0125-preview", reasoning_enabled=True):
-
+    client = OpenAI()
     if reasoning_enabled:
         if positives:
             system_message = V2_SYSTEM_PROMPT_POSITIVE
@@ -305,7 +309,7 @@ def ask_gpts_v2(goal, object_clusters, env="a house", positives=True, num_sample
         else:
             messages.append({"role": "user", "content": f"I observe the following clusters of objects while exploring {env}:\n\n {options}\nWhere should I avoid spending time searching if I am looking for {goal}?"})
 
-        completion = openai.ChatCompletion.create(
+        completion = client.chat.completions.create(
             model=model, temperature=1,
             n=num_samples, messages=messages)
         
@@ -343,68 +347,8 @@ def ask_gpts_v2(goal, object_clusters, env="a house", positives=True, num_sample
 
 
 @retry.retry(tries=5)
-def ask_vision(num_samples=1, model="gpt-4-vision-preview", image_path="obs.jpg", detail="low"):
-    import base64
-    import requests
-    import os
-    import json
-
-    # Function to encode the image
-    def encode_image(image_path):
-        with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode('utf-8')
-
-    messages=[
-        {"role": "system", "content": "You are a robotic home assistant that can help people find objects. You have an observation of the house as images."},
-    ]
-    # messages = []
-    # Getting the base64 string
-    base64_image = encode_image(image_path)
-
-    user_message =  {
-        "role": "user",
-        "content": [
-            {
-            "type": "text",
-            "text": "So desbribe the image that can provide useful information for object navigation. The description should be informative but concise"
-            },
-            {
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/jpeg;base64,{base64_image}",
-                "detail": f"{detail}"
-            }
-            }
-        ]
-        }
-    
-    messages.append(user_message)
-    import time
-    now = time.time()
-    completion = openai.ChatCompletion.create(
-            model=model, temperature=1,
-            n=num_samples, messages=messages, max_tokens=300)
-       
-    # answers = []
-    # for choice in completion.choices:
-    #     try:
-    #         complete_response = choice.message["content"]
-    #         # Make the response all lowercase
-    #         complete_response = complete_response.lower()
-    #         answers.append(complete_response)
-    #     except:
-    #         answers.append([])
-    # Define the JSON file path
-    json_file_path = os.path.splitext(image_path)[0] + '.json'
-
-    # Save the response to a JSON file
-    with open(json_file_path, 'w') as json_file:
-        json.dump({"response": completion}, json_file, indent=4)
-    # print(answers)
-    # return answers
-
-@retry.retry(tries=5)
 def greedy_ask_gpt(goal, object_clusters, model="gpt-4-0125-preview", env="a house"):
+    client = OpenAI()
     if len(object_clusters) > 0:
         options = ""
         for i, cluster in enumerate(object_clusters):
@@ -414,7 +358,7 @@ def greedy_ask_gpt(goal, object_clusters, model="gpt-4-0125-preview", env="a hou
             options += f"{i+1}. {cluser_string[:-2]}\n"
         messages = [{"role": "system", "content": "You are a robot exploring and environment. You have access to semantic sensors that can detect objects.Your goal is to figure near which cluster to explore next. You should pick one from the list and answer by providing the number of the cluster. If there is not clear choice select answer 0.You must provide reasoning before providing your answer. The response format must follow:\n\nreasoning: <your reasoning here>\nanswer: <your answer here, number only>"}]
         messages.append({"role": "user", "content": f"I observe the following clusters of objects while exploring {env}:\n\n {options}\nWhere should I search next if I am looking for {goal}?"})    
-        completion = openai.ChatCompletion.create(
+        completion = client.chat.completions.create(
         model=model, temperature=1,
         n=1, messages=messages)
         complete_response = completion.choices[0].message["content"]
@@ -556,13 +500,14 @@ def aggregate_reasoning(reasoning: list):
     # Ask GPT to aggregate the reasoning into a single consensus
 
     # Construct the prompt
+    client = OpenAI()
     system_prompt = "You are given a series of explanations regarding where to navigate in order to find an object. You should aggregate the reasoning from multiple agents into a single sentence"
     prompt = ""
     for i, r in enumerate(reasoning):
         prompt += f"Reasoning {i}: {r}\n"
 
     messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}]
-    completion = openai.ChatCompletion.create(
+    completion = client.chat.completions.create(
         model="gpt-4-0125-preview",
         messages=messages)
     complete_response = completion.choices[0].message["content"]
@@ -615,7 +560,7 @@ def extract_info_from_key(key, args):
         
 @retry.retry(tries=5)
 def vision_nav(key_list, goal='toilet', args=None, num_samples=1, model="gpt-4-vision-preview", detail="low", downsampling=8):
-        
+    client = OpenAI()
     img_list = decode_img_list(key_list, args)
     if downsampling:
         img_list = sample_images(img_list, downsampling)
@@ -630,7 +575,7 @@ def vision_nav(key_list, goal='toilet', args=None, num_samples=1, model="gpt-4-v
     user_message['content'] += create_content(img_list, detail, goal)
     messages.append(user_message)
 
-    completion = openai.ChatCompletion.create(
+    completion = client.chat.completions.create(
             model=model, temperature=1,
             n=num_samples, messages=messages, max_tokens=300)
     ans = 0
@@ -717,3 +662,234 @@ def sample_images(image_paths, max_samples=5):
             sampled_images.append([path_list[i] for i in indices])
     return sampled_images
 
+@retry.retry(tries=5)
+def ask_vision(num_samples=1, model="gpt-4-vision-preview", image_path="obs.jpg", detail="low"):
+    import base64
+    import requests
+    import os
+    import json
+    client = OpenAI()
+    messages=[
+        {"role": "system", "content": "You are a robotic home assistant that can help people find objects. You have an observation of the house as images."},
+    ]
+    # messages = []
+    # Getting the base64 string
+    base64_image = encode_image(image_path)
+
+    user_message =  {
+        "role": "user",
+        "content": [
+            {
+            "type": "text",
+            "text": "So desbribe the image that can provide useful information for object navigation. The description should be informative but concise"
+            },
+            {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{base64_image}",
+                "detail": f"{detail}"
+            }
+            }
+        ]
+        }
+    
+    messages.append(user_message)
+    import time
+    now = time.time()
+    completion = client.chat.completions.create(
+            model=model, temperature=1,
+            n=num_samples, messages=messages, max_tokens=300)
+       
+    # answers = []
+    # for choice in completion.choices:
+    #     try:
+    #         complete_response = choice.message["content"]
+    #         # Make the response all lowercase
+    #         complete_response = complete_response.lower()
+    #         answers.append(complete_response)
+    #     except:
+    #         answers.append([])
+    # Define the JSON file path
+    json_file_path = os.path.splitext(image_path)[0] + '.json'
+
+    # Save the response to a JSON file
+    with open(json_file_path, 'w') as json_file:
+        json.dump({"response": completion}, json_file, indent=4)
+    # print(answers)
+    # return answers
+
+
+@retry.retry(tries=5)
+def ask_llava(image_path):
+    
+    base64_image = encode_image(image_path)
+    api_key = "ddd"
+
+    # Controller endpoint
+    base_url = "http://10.230.220.36:8000/api/v1"
+
+    client = OpenAI(
+        api_key=api_key,
+        base_url=base_url
+    )
+
+    response = client.chat.completions.create(
+    model="llava-v1.5-7b",
+    messages=[
+        {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "What's in this image?"},
+            {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{base64_image}",
+            },
+            },
+        ],
+        }
+    ],
+    max_tokens=300,
+    stream=False
+    )
+
+    # Extracting 'content' value from reponse
+    try:
+        content = response.choices[0].message.content
+    # print(content)
+    except:
+        content = "No response"
+    json_file_path = os.path.splitext(image_path)[0] + '.json'
+
+    # Save the response to a JSON file
+    with open(json_file_path, 'w') as json_file:
+        json.dump({"response": content}, json_file, indent=4)
+    
+# if __name__ == "__main__":
+#     ask_llava("/mnt/L3MVN/tmp/dump/vision_nav/episodes/thread_3/eps_1/3-1-Obs-112.png")
+
+def combine_response(img_list):
+    response_list = []
+    for clu in img_list:
+        clu_response = []
+        for img in clu:
+            json_file_path = os.path.splitext(img)[0] + '.json'
+            with open(json_file_path) as json_file:
+                # Load the JSON data as a dictionary
+                data = json.load(json_file)
+                clu_response.append(data['response'])
+        response_list.append(clu_response)
+    return response_list
+
+
+@retry.retry(tries=5)
+def llm_nav(goal, description_clusters, env="a house", positives=True, num_samples=5, model="gpt-3.5-turbo-0125", reasoning_enabled=True):
+    client = OpenAI()
+
+    system_message = LLM_SYSTEM_PROMPT_POSITIVE
+
+    messages=[
+        {"role": "system", "content": system_message},
+    ]
+    if len(description_clusters) > 0:
+        options = ""
+        for i, cluster in enumerate(description_clusters):
+            options += f"{i+1}. {cluster}\n"
+            
+        messages.append({"role": "user", "content": f"I observe the following clusters while exploring {env}:\n\n {options}\nWhere should I search next if I am looking for {goal}?"})
+        
+        print(f"I observe the following objects while exploring {env}:\n\n {options}\nWhere should I search next if I am looking for {goal}?")
+
+
+        completion = client.chat.completions.create(
+            model=model, temperature=1,
+            n=num_samples, messages=messages)
+        
+        answers = []
+        reasonings = []
+        for choice in completion.choices:
+            try:
+                complete_response = choice.message["content"]
+                # Make the response all lowercase
+                complete_response = complete_response.lower()
+                if reasoning_enabled:
+                    reasoning = complete_response.split("reasoning: ")[1].split("\n")[0]
+                else:
+                    reasoning = "disabled"
+                # Parse out the first complete integer from the substring after  the text "Answer: ". use regex
+                if len(complete_response.split("answer:")) > 1:
+                    answer = complete_response.split("answer:")[1].split("\n")[0]
+                    # Separate the answers by commas
+                    answers.append([int(x) for x in answer.split(",")])
+                else:
+                    answers.append([])
+                reasonings.append(reasoning)
+            except:
+                answers.append([])
+
+        # Flatten answers
+        flattened_answers = [item for sublist in answers for item in sublist]
+        # It is possible GPT gives an invalid answer less than 1 or greater than 1 plus the number of object clusters. Remove invalid answers
+        filtered_flattened_answers = [x for x in flattened_answers if x >= 1 and x <= len(description_clusters)]
+        # Aggregate into counts and normalize to probabilities
+        answer_counts = {x: filtered_flattened_answers.count(x) / len(answers) for x in set(filtered_flattened_answers)}
+
+        return answer_counts, reasonings
+    raise Exception("Cluster descriptions must be non-empty")
+
+
+@retry.retry(tries=5)
+def reconstruct_response(response_list, model="gpt-3.5-turbo-0125"):
+    client = OpenAI()
+    messages=[
+        {"role": "system", "content": "You are good at give a holistic and complete description of multiple observations. You are given mutiple descriptions of the a region of indoor house scene, and you should aggregate them into a single description"},
+        
+    ]
+    prompt = ""
+    if len(response_list) > 0:
+        for i, response in enumerate(response_list):
+            
+            prompt += f"For image {i}, your observations is: \n{response}\n"
+            
+        query = "Some of the descriptions may be redundant or conflicting, but based on your reasoning capabilities, you should provide a single description that is complete and accurate."
+        prompt += query
+        user_message = {"role": "user", "content": prompt}
+        messages.append(user_message)
+        completion = client.chat.completions.create(
+                model=model, temperature=1,
+            messages=messages, max_tokens=600)
+    
+        return completion.choices[0].message.content
+    else:
+        return "No response"
+    
+    
+
+LLM_SYSTEM_PROMPT_POSITIVE = """You are a robot exploring an environment for the first time. You will be given an object to look for and should provide guidance of where to explore based on a series of observations. Observations will be given as a list of scene descriptions numbered 1 to N. 
+
+Your job is to provide guidance about where we should explore next. For example if we are in a house and looking for a tv we should explore areas that typically have tv's such as bedrooms and living rooms.
+
+You should always provide reasoning along with a number identifying where we should explore. If there are multiple right answers you should separate them with commas. Always include Reasoning: <your reasoning> and Answer: <your answer(s)>. If there are no suitable answers leave the space afters Answer: blank.
+
+Example
+
+User:
+I observe the following scenes while exploring a house:
+
+1. Descriptions of scene 1
+2. Descriptions of scene 2
+3. Descriptions of scene 3
+
+Where should I search next if I am looking for a knife?
+
+Assistant:
+Reasoning: <Explain reason of your choice>.
+Answer: <your answer(s)>
+
+
+Other considerations 
+
+
+1. Provide reasoning for each cluster before giving the final answer.
+2. Feel free to think multiple steps in advance; for example if one room is typically located near another then it is ok to use that information to provide higher scores in that direction.
+"""
