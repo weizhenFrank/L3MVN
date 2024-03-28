@@ -1,4 +1,3 @@
-import openai
 import retry
 import re
 import numpy as np
@@ -8,6 +7,39 @@ import base64
 import os
 import json
 from openai import OpenAI
+import requests
+import concurrent.futures
+import time
+
+LLM_SYSTEM_PROMPT_POSITIVE = """You are a robot exploring an environment for the first time. You will be given an object to look for and should provide guidance of where to explore based on a series of observations. Observations will be given as a list of scene descriptions numbered 1 to N. 
+
+Your job is to provide guidance about where we should explore next. For example if we are in a house and looking for a tv we should explore areas that typically have tv's such as bedrooms and living rooms.
+
+You should always provide reasoning along with a number identifying where we should explore. If there are multiple right answers you should separate them with commas. Always include Reasoning: <your reasoning> and Answer: <your answer(s)>. If there are no suitable answers leave the space afters Answer: blank.
+
+Example
+
+User:
+I observe the following scenes while exploring a house:
+
+1. Descriptions of scene 1
+2. Descriptions of scene 2
+3. Descriptions of scene 3
+
+Where should I search next if I am looking for a knife?
+
+Assistant:
+Reasoning: <Explain reason of your choice>.
+Answer: <your answer(s)>
+
+
+Other considerations 
+
+
+1. Provide reasoning for each cluster before giving the final answer.
+2. Feel free to think multiple steps in advance; for example if one room is typically located near another then it is ok to use that information to provide higher scores in that direction.
+"""
+
 
 USER_EXAMPLE_1 = """You see the following clusters of objects:
 
@@ -415,8 +447,9 @@ class LanguageMethod(Enum):
     SAMPLING_POSTIIVE = 2
     SAMPLING_NEGATIVE = 3
     GREEDY = 4
+    VISION_DES = 5
 
-def query_llm(method: LanguageMethod, object_clusters: list, goal: str, reasoning_enabled: bool = True, model="gpt-4-0125-preview") -> list:
+def query_llm(method: LanguageMethod, object_clusters: list, goal: str, reasoning_enabled: bool = True, model="gpt-4-0125-preview", out_path=None) -> list:
     """
     Query the LLM fore a score and a selected goal. Returns a list of language scores for each target point
     method = SINGLE_SAMPLE uses the naive single sample LLM and binary scores of 0 or 1
@@ -424,73 +457,90 @@ def query_llm(method: LanguageMethod, object_clusters: list, goal: str, reasonin
     method = SAMPLING_POSTIIVE uses the sampling based approach and gives scores between 0 and 1 if the agent should explore a cluster
     method = SAMPLING_NEGATIVE uses the sampling based approach and gives scores between 0 and 1 if the agent should not explore a cluster
     method = GREEDY gives etiher 0 or 10000 (a large positive score) that tells the agent to go to a particular cluster
+    method = VISION_DES uses the vision based LLM to give scores between 0 and 1
     """
-
-    # Convert object clusters to a tuple of tuples so we can hash it and get unique elements
-    object_clusters_tuple = [tuple(x) for x in object_clusters]
-    # Remove empty clusters and duplicate clusters
-    query = list(set(tuple(object_clusters_tuple)) - set({tuple([])}))
-
-    if method == LanguageMethod.SINGLE_SAMPLE:
-            try:
-                goal_id, reasoning = ask_gpt(goal, query)
-            except Exception as excptn:
-                goal_id, reasoning = 0, "GPT failed"
-                print("GPT failed:", excptn)
-            if goal_id != 0:
-                goal_id = np.argmax([1 if x == query[goal_id - 1] else 0 for x in object_clusters_tuple]) + 1
-            language_scores = [0] * (len(object_clusters_tuple) + 1)
-            language_scores[goal_id] = 1
-    elif method == LanguageMethod.SAMPLING:
-        try: 
-            answer_counts, reasoning = ask_gpts(goal, query)
+    if method == LanguageMethod.VISION_DES:
+        response_lists = combine_response(object_clusters)
+        import time
+        start_time = time.time()
+        reconstructed = reconstruct_response(response_lists)
+        print("Time to reconstruct:", time.time() - start_time)
+        try:
+            answer_counts, reasoning = llm_nav(goal, reconstructed, positives=True, reasoning_enabled=reasoning_enabled)
         except Exception as excptn:
-            answer_counts, reasoning = {}, "GPTs failed"
+            answer_counts, reasoning = {}, "LLMs failed"
             print("GPTs failed:", excptn)
-        language_scores = [0] * (len(object_clusters_tuple) + 1)
+        language_scores = [0] * len(object_clusters)
+        # import pdb; pdb.set_trace()
         for key, value in answer_counts.items():
-            if key != 0:
+            if key >= 1 and key <= len(object_clusters):
+                language_scores[key-1] = value
+    else:
+        # Convert object clusters to a tuple of tuples so we can hash it and get unique elements
+        object_clusters_tuple = [tuple(x) for x in object_clusters]
+        # Remove empty clusters and duplicate clusters
+        query = list(set(tuple(object_clusters_tuple)) - set({tuple([])}))
+
+        if method == LanguageMethod.SINGLE_SAMPLE:
+                try:
+                    goal_id, reasoning = ask_gpt(goal, query)
+                except Exception as excptn:
+                    goal_id, reasoning = 0, "GPT failed"
+                    print("GPT failed:", excptn)
+                if goal_id != 0:
+                    goal_id = np.argmax([1 if x == query[goal_id - 1] else 0 for x in object_clusters_tuple]) + 1
+                language_scores = [0] * (len(object_clusters_tuple) + 1)
+                language_scores[goal_id] = 1
+        elif method == LanguageMethod.SAMPLING:
+            try: 
+                answer_counts, reasoning = ask_gpts(goal, query)
+            except Exception as excptn:
+                answer_counts, reasoning = {}, "GPTs failed"
+                print("GPTs failed:", excptn)
+            language_scores = [0] * (len(object_clusters_tuple) + 1)
+            for key, value in answer_counts.items():
+                if key != 0:
+                    for i, x in enumerate(object_clusters_tuple):
+                        if x == query[key - 1]:
+                            language_scores[i + 1] = value
+                else:
+                    language_scores[0] = value
+        elif method == LanguageMethod.SAMPLING_POSTIIVE:
+            try:
+                answer_counts, reasoning = ask_gpts_v2(goal, query, positives=True, reasoning_enabled=reasoning_enabled, model=model)
+            except Exception as excptn:
+                answer_counts, reasoning = {}, "GPTs failed"
+                print("GPTs failed:", excptn)
+            language_scores = [0] * len(object_clusters_tuple)
+            for key, value in answer_counts.items():
                 for i, x in enumerate(object_clusters_tuple):
                     if x == query[key - 1]:
-                        language_scores[i + 1] = value
-            else:
-                language_scores[0] = value
-    elif method == LanguageMethod.SAMPLING_POSTIIVE:
-        try:
-            answer_counts, reasoning = ask_gpts_v2(goal, query, positives=True, reasoning_enabled=reasoning_enabled, model=model)
-        except Exception as excptn:
-            answer_counts, reasoning = {}, "GPTs failed"
-            print("GPTs failed:", excptn)
-        language_scores = [0] * len(object_clusters_tuple)
-        for key, value in answer_counts.items():
+                        language_scores[i] = value
+
+        elif method == LanguageMethod.SAMPLING_NEGATIVE:
+            try:
+                answer_counts, reasoning = ask_gpts_v2(goal, query, positives=False,  reasoning_enabled=reasoning_enabled, model=model)
+            except Exception as excptn:
+                answer_counts, reasoning = {}, "GPTs failed"
+                print("GPTs failed:", excptn)
+            language_scores = [0] * len(object_clusters_tuple)
+            for key, value in answer_counts.items():
+                for i, x in enumerate(object_clusters_tuple):
+                    if x == query[key - 1]:
+                        language_scores[i] = value
+
+        elif method == LanguageMethod.GREEDY:
+            # This is the language greedy method. We simply ask an LLM where we should go next and directly follow that
+            language_scores = [0] * len(object_clusters_tuple)
+            reasoning, answer = greedy_ask_gpt(goal, query)
+            if answer-1 >= len(query):
+                answer = 0
             for i, x in enumerate(object_clusters_tuple):
-                if x == query[key - 1]:
-                    language_scores[i] = value
+                if x == query[answer-1]:
+                    language_scores[i] = 1000
 
-    elif method == LanguageMethod.SAMPLING_NEGATIVE:
-        try:
-            answer_counts, reasoning = ask_gpts_v2(goal, query, positives=False,  reasoning_enabled=reasoning_enabled, model=model)
-        except Exception as excptn:
-            answer_counts, reasoning = {}, "GPTs failed"
-            print("GPTs failed:", excptn)
-        language_scores = [0] * len(object_clusters_tuple)
-        for key, value in answer_counts.items():
-            for i, x in enumerate(object_clusters_tuple):
-                if x == query[key - 1]:
-                    language_scores[i] = value
-
-    elif method == LanguageMethod.GREEDY:
-        # This is the language greedy method. We simply ask an LLM where we should go next and directly follow that
-        language_scores = [0] * len(object_clusters_tuple)
-        reasoning, answer = greedy_ask_gpt(goal, query)
-        if answer-1 >= len(query):
-            answer = 0
-        for i, x in enumerate(object_clusters_tuple):
-            if x == query[answer-1]:
-                language_scores[i] = 1000
-
-    else:
-        raise Exception("Invalid method")
+        else:
+            raise Exception("Invalid method")
     
     # The first element of language scores is the scores for uncertain, the last n-1 correspond to the semantic scores for each point
     return language_scores, reasoning
@@ -732,7 +782,8 @@ def ask_llava(image_path):
         api_key=api_key,
         base_url=base_url
     )
-
+    import time
+    now = time.time()
     response = client.chat.completions.create(
     model="llava-v1.5-7b",
     messages=[
@@ -762,8 +813,10 @@ def ask_llava(image_path):
     json_file_path = os.path.splitext(image_path)[0] + '.json'
 
     # Save the response to a JSON file
+    # print("Time to get img caption response:", time.time() - now)
     with open(json_file_path, 'w') as json_file:
         json.dump({"response": content}, json_file, indent=4)
+
     
 # if __name__ == "__main__":
 #     ask_llava("/mnt/L3MVN/tmp/dump/vision_nav/episodes/thread_3/eps_1/3-1-Obs-112.png")
@@ -774,6 +827,8 @@ def combine_response(img_list):
         clu_response = []
         for img in clu:
             json_file_path = os.path.splitext(img)[0] + '.json'
+            if not os.path.exists(json_file_path):
+                ask_llava(img)
             with open(json_file_path) as json_file:
                 # Load the JSON data as a dictionary
                 data = json.load(json_file)
@@ -783,7 +838,7 @@ def combine_response(img_list):
 
 
 @retry.retry(tries=5)
-def llm_nav(goal, description_clusters, env="a house", positives=True, num_samples=5, model="gpt-3.5-turbo-0125", reasoning_enabled=True):
+def llm_nav(goal, description_clusters, env="a house", positives=True, num_samples=5, model="gpt-3.5-turbo-0125", reasoning_enabled=True, out_path=None):
     client = OpenAI()
 
     system_message = LLM_SYSTEM_PROMPT_POSITIVE
@@ -791,14 +846,18 @@ def llm_nav(goal, description_clusters, env="a house", positives=True, num_sampl
     messages=[
         {"role": "system", "content": system_message},
     ]
+    
     if len(description_clusters) > 0:
         options = ""
         for i, cluster in enumerate(description_clusters):
             options += f"{i+1}. {cluster}\n"
+            options += "----------------------------\n"
             
-        messages.append({"role": "user", "content": f"I observe the following clusters while exploring {env}:\n\n {options}\nWhere should I search next if I am looking for {goal}?"})
+        messages.append({"role": "user", "content": f"""I observe the following clusters while exploring {env}:\n\n {options}\nWhere should I search next if I am looking for {goal}? \n The response MUST follow format:\n 
+                        Reasoning: <Explain reason of your choice>.
+                        Answer: <your answer(s), NUMBER ONLY >"""})
         
-        print(f"I observe the following objects while exploring {env}:\n\n {options}\nWhere should I search next if I am looking for {goal}?")
+        # print(f"I observe the following objects while exploring {env}:\n\n {options}\nWhere should I search next if I am looking for {goal}?")
 
 
         completion = client.chat.completions.create(
@@ -809,7 +868,7 @@ def llm_nav(goal, description_clusters, env="a house", positives=True, num_sampl
         reasonings = []
         for choice in completion.choices:
             try:
-                complete_response = choice.message["content"]
+                complete_response = choice.message.content
                 # Make the response all lowercase
                 complete_response = complete_response.lower()
                 if reasoning_enabled:
@@ -838,58 +897,96 @@ def llm_nav(goal, description_clusters, env="a house", positives=True, num_sampl
     raise Exception("Cluster descriptions must be non-empty")
 
 
+
 @retry.retry(tries=5)
-def reconstruct_response(response_list, model="gpt-3.5-turbo-0125"):
-    client = OpenAI()
-    messages=[
-        {"role": "system", "content": "You are good at give a holistic and complete description of multiple observations. You are given mutiple descriptions of the a region of indoor house scene, and you should aggregate them into a single description"},
-        
-    ]
-    prompt = ""
+def process_response_list(response_list, model, system_prompt):
     if len(response_list) > 0:
+        if 'claude' in model:
+            messages = []
+        else:
+            messages = [
+                {"role": "system", "content": system_prompt}
+            ]
+        prompt = ""
         for i, response in enumerate(response_list):
-            
-            prompt += f"For image {i}, your observations is: \n{response}\n"
-            
-        query = "Some of the descriptions may be redundant or conflicting, but based on your reasoning capabilities, you should provide a single description that is complete and accurate."
+            prompt += f"For image {i}, your observation is:\n{response}\n\n"
+        query = "Some of the descriptions may be redundant or conflicting, but based on your reasoning capabilities, you should provide a single description that is complete and accurate. Limit the description to 500 words."
         prompt += query
         user_message = {"role": "user", "content": prompt}
         messages.append(user_message)
-        completion = client.chat.completions.create(
+
+        if 'gpt' in model:
+            client = OpenAI()
+            completion = client.chat.completions.create(
                 model=model, temperature=1,
-            messages=messages, max_tokens=600)
-    
-        return completion.choices[0].message.content
+                messages=messages, max_tokens=800
+            )
+            result = completion.choices[0].message.content
+            return result
+        if 'claude' in model:
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            url = "https://api.anthropic.com/v1/messages"
+            headers = {
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            }
+            payload = {
+                "messages": messages,
+                "model": model,
+                "max_tokens": 1024,
+                "temperature": 0.5,
+                "system": system_prompt,
+            }
+        else:
+            url = "http://10.230.220.36:1337/v1/chat/completions"
+            headers = {
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "messages": messages,
+                "model": model,
+                "stream": False,
+                "max_tokens": 1024,
+                "temperature": 0.5,
+            }
+        try:
+            if 'claude' in model:
+                response = requests.post(url, headers=headers, json=payload)
+            else:
+                response = requests.post(url, headers=headers, data=json.dumps(payload))
+            response.raise_for_status()  # Raise an exception for 4xx or 5xx status codes
+            if 'claude' in model:
+                result = response.json()['content'][0]['text']
+            else:
+                result = response.json()['choices'][0]['message']['content']
+        except requests.exceptions.RequestException as e:
+            # Handle request exceptions (e.g., connection errors, timeouts)
+            print(f"Error occurred during API request: {e}")
+            result = "Error occurred during API request"
+        except (KeyError, IndexError) as e:
+            # Handle JSON parsing errors or missing keys
+            print(f"Error occurred while parsing API response: {e}")
+            result = "Error occurred while parsing API response"
+        return result
     else:
         return "No response"
-    
-    
 
-LLM_SYSTEM_PROMPT_POSITIVE = """You are a robot exploring an environment for the first time. You will be given an object to look for and should provide guidance of where to explore based on a series of observations. Observations will be given as a list of scene descriptions numbered 1 to N. 
+@retry.retry(tries=5)
+def reconstruct_response(response_lists, model="mistral-ins-7b-q4", max_parallel_requests=3, delay=1):
+    system_prompt = "You are good at giving a holistic and complete description of multiple observations. You are given multiple descriptions of a region of an indoor house scene, and you should aggregate them into a single description. Such holistic and complete description should provide useful information for object navigation. For example: I need to find a bed, so your description should reflect the information that can help me find the bed. The list of things I need to find is chosen from: chair, couch, potted plant, bed, toilet, and TV."
 
-Your job is to provide guidance about where we should explore next. For example if we are in a house and looking for a tv we should explore areas that typically have tv's such as bedrooms and living rooms.
+    if 'claude' in model:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_parallel_requests) as executor:
+            futures = []
+            for response_list in response_lists:
+                futures.append(executor.submit(process_response_list, response_list, model, system_prompt))
+                time.sleep(delay)  # Add a delay between submitting requests
+            clusters = [future.result() for future in concurrent.futures.as_completed(futures)]
+    else:
+        clusters = [process_response_list(response_list, model, system_prompt)
+                    for response_list in response_lists]
 
-You should always provide reasoning along with a number identifying where we should explore. If there are multiple right answers you should separate them with commas. Always include Reasoning: <your reasoning> and Answer: <your answer(s)>. If there are no suitable answers leave the space afters Answer: blank.
-
-Example
-
-User:
-I observe the following scenes while exploring a house:
-
-1. Descriptions of scene 1
-2. Descriptions of scene 2
-3. Descriptions of scene 3
-
-Where should I search next if I am looking for a knife?
-
-Assistant:
-Reasoning: <Explain reason of your choice>.
-Answer: <your answer(s)>
+    return clusters
 
 
-Other considerations 
-
-
-1. Provide reasoning for each cluster before giving the final answer.
-2. Feel free to think multiple steps in advance; for example if one room is typically located near another then it is ok to use that information to provide higher scores in that direction.
-"""

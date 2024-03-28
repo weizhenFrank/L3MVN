@@ -917,14 +917,11 @@ def main():
                         if overlap_ratio > 0.5:
                             frontier_rgb_keys_list[lay].append(key)
                             triangle_vertices_list.append(triangle_vertices)
-                        
+                
+                
                 frontier_rgb_list = language_tools.decode_img_list(frontier_rgb_keys_list, args)
                 frontier_rgb_list = language_tools.sample_images(frontier_rgb_list, 8)
-                # vision nav
-                try:
-                    clu_index = language_tools.vision_nav(frontier_rgb_keys_list, cname, args)
-                except:
-                    clu_index = 0
+
                 frontier_boundaries = []
 
                 clusters = []
@@ -964,7 +961,7 @@ def main():
                                 file.write(str(item) + '\n')
                     vis_img_path = filename.replace('.txt', '.png')
                 
-                rgb_debug_path = "./tmp/dump/0_frontier_viz_debug/episodes/thread_0/eps_1/0-1-Obs-0.png"
+                rgb_debug_path = f"./tmp/dump/{args.exp_name}/episodes/thread_0/eps_1/0-1-Obs-0.png"
                 
                 visualize_frontiers(local_map[e, 4:, :, :].argmax(0).cpu().numpy(),
                                     frontier_boundaries, args, e, step, rgb_debug_path, local_map[e, 0, :, :].cpu().numpy(),
@@ -972,47 +969,28 @@ def main():
                                     target_point_map[e],
                                     local_goal_maps[e], triangle_vertices_list, out_path=vis_img_path)
                 
-                                
-                frontier_score_list[e].extend([torch.tensor(1., device=device) if i == clu_index else torch.tensor(0., device=device) for i in range(tpm)])
-
-                # clusters = []
-
-                # for lay in range(tpm):
-                #     f_pos = np.argwhere(target_point_map[e] == lay+1)
-                #     fmb = get_frontier_boundaries((f_pos[0][0], f_pos[0][1]),
-                #                                     (local_w/6, local_h/6),
-                #                                     (local_w, local_h))
-                #     objs_list = []
-                    
-                #     for se_cn in range(args.num_sem_categories - 1):
-                #         if local_map[e][se_cn + 4, fmb[0]:fmb[1], fmb[2]:fmb[3]].sum() != 0.:
-                #             objs_list.append(hm3d_category[se_cn])
-
-                #     clusters.append(objs_list)
-                
                 # Use the new LLM tool to get scores for each cluster
-                # if clusters:
-                #     # scores, reasoning = language_tools.query_llm(language_tools.LanguageMethod.SAMPLING_POSTIIVE, clusters, cname, reasoning_enabled=args.reasoning, model=args.llm)
-                #     scores, reasoning =  language_tools.score_func(args.sam_method, clusters, cname, reasoning_enabled=args.reasoning, model=args.llm)
+                if frontier_rgb_list:
+                    scores, reasoning = language_tools.query_llm(language_tools.LanguageMethod.VISION_DES, frontier_rgb_list, cname, reasoning_enabled=True, model=args.llm)
+
+                    # Convert scores to tensors and ensure they are on the same device
+                    scores_tensors = [torch.tensor(score, dtype=torch.float).to(device) for score in scores]
                     
-                #     # Convert scores to tensors and ensure they are on the same device
-                #     scores_tensors = [torch.tensor(score, dtype=torch.float).to(device) for score in scores]
+                    # # Extend the frontier score list with the new tensor scores
+                    frontier_score_list[e].extend(scores_tensors)
                     
-                #     # # Extend the frontier score list with the new tensor scores
-                #     frontier_score_list[e].extend(scores_tensors)
-                    
-                #     # # Stack the scores tensors to apply softmax
-                #     # stacked_scores = torch.stack(scores_tensors)
-                #     # softmaxed_scores = F.softmax(stacked_scores, dim=0)
-                #     # final_scores = [score for score in softmaxed_scores]
-                #     # # Update the frontier score list with the softmaxed scores
-                #     # frontier_score_list[e].extend(final_scores)
-                # else:
-                #     # Extend with default scores, ensuring they are tensors on the correct CUDA device
-                #     logging.warning(f"No clusters found for environment {e}. Using default scores.")
-                #     print("No clusters found for environment {e}. Using default scores.")
-                #     default_scores = [torch.tensor(0.1, device) for _ in range(tpm)]
-                #     frontier_score_list[e].extend(default_scores)
+                    # # Stack the scores tensors to apply softmax
+                    # stacked_scores = torch.stack(scores_tensors)
+                    # softmaxed_scores = F.softmax(stacked_scores, dim=0)
+                    # final_scores = [score for score in softmaxed_scores]
+                    # # Update the frontier score list with the softmaxed scores
+                    # frontier_score_list[e].extend(final_scores)
+                else:
+                    # Extend with default scores, ensuring they are tensors on the correct CUDA device
+                    logging.warning(f"No clusters found for environment {e}. Using default scores.")
+                    print("No clusters found for environment {e}. Using default scores.")
+                    default_scores = [torch.tensor(0.1, device) for _ in range(tpm)]
+                    frontier_score_list[e].extend(default_scores)
 
 
 

@@ -392,7 +392,7 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
         fileName = self._save_as_png(rgb)
         # Generate a unique key for the current RGB image
         unique_key = self._generate_key()
-        # language_tools.ask_vision(image_path=fileName)
+        # language_tools.ask_llava(image_path=fileName)
         # Store the metadata for the RGB image
         
         self.rgb_image_metadata[unique_key] = {
