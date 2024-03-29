@@ -770,56 +770,91 @@ def ask_vision(num_samples=1, model="gpt-4-vision-preview", image_path="obs.jpg"
 
 
 @retry.retry(tries=5)
-def ask_llava(image_path):
-    
+def ask_llava(image_path, model="claude-3-haiku-20240307"):
+    system_prompt = "You are home assistant robot and you are in a house. You have the obervation. Please describe the image you observed. The reason why you need to describe the image because I need to find a object. So your description should reflect the information that can help me find the object. The object I need to find is one of: chair, couch, potted plant, bed, toilet, and TV."
     base64_image = encode_image(image_path)
-    api_key = "ddd"
+    
+    if model == "llava-v1.5-7b":
+        api_key = "ddd"
+        # Controller endpoint
+        base_url = "http://10.230.220.36:8000/api/v1"
 
-    # Controller endpoint
-    base_url = "http://10.230.220.36:8000/api/v1"
-
-    client = OpenAI(
-        api_key=api_key,
-        base_url=base_url
-    )
-    import time
-    now = time.time()
-    response = client.chat.completions.create(
-    model="llava-v1.5-7b",
-    messages=[
-        {
-        "role": "user",
-        "content": [
-            {"type": "text", "text": "What's in this image?"},
+        client = OpenAI(
+            api_key=api_key,
+            base_url=base_url
+        )
+        import time
+        now = time.time()
+        response = client.chat.completions.create(
+        model="llava-v1.5-7b",
+        messages=[
             {
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/jpeg;base64,{base64_image}",
-            },
-            },
+            "role": "user",
+            "content": [
+                {"type": "text", "text": f"{system_prompt}"},
+                {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{base64_image}",
+                },
+                },
+            ],
+            }
         ],
-        }
-    ],
-    max_tokens=300,
-    stream=False
-    )
+        max_tokens=300,
+        stream=False
+        )
 
-    # Extracting 'content' value from reponse
-    try:
-        content = response.choices[0].message.content
-    # print(content)
-    except:
-        content = "No response"
+        # Extracting 'content' value from reponse
+        try:
+            content = response.choices[0].message.content
+        # print(content)
+        except:
+            content = "No response"
+    else:
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+        payload = {
+            "model": model,
+            "max_tokens": 1024,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": base64_image
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": system_prompt
+                        }
+                    ]
+                }
+            ]
+        }
+        try:
+            response = requests.post(url, headers=headers, json=payload)
+            content = response.json()['content'][0]['text']
+        except Exception as e:
+            print("Error in request:", e)
+            content = "No response"
+            
     json_file_path = os.path.splitext(image_path)[0] + '.json'
 
     # Save the response to a JSON file
     # print("Time to get img caption response:", time.time() - now)
     with open(json_file_path, 'w') as json_file:
         json.dump({"response": content}, json_file, indent=4)
-
-    
-# if __name__ == "__main__":
-#     ask_llava("/mnt/L3MVN/tmp/dump/vision_nav/episodes/thread_3/eps_1/3-1-Obs-112.png")
 
 def combine_response(img_list):
     response_list = []
@@ -973,7 +1008,7 @@ def process_response_list(response_list, model, system_prompt):
         return "No response"
 
 @retry.retry(tries=5)
-def reconstruct_response(response_lists, model="mistral-ins-7b-q4", max_parallel_requests=3, delay=1):
+def reconstruct_response(response_lists, model="claude-3-haiku-20240307", max_parallel_requests=3, delay=1):
     system_prompt = "You are good at giving a holistic and complete description of multiple observations. You are given multiple descriptions of a region of an indoor house scene, and you should aggregate them into a single description. Such holistic and complete description should provide useful information for object navigation. For example: I need to find a bed, so your description should reflect the information that can help me find the bed. The list of things I need to find is chosen from: chair, couch, potted plant, bed, toilet, and TV."
 
     if 'claude' in model:
@@ -990,3 +1025,6 @@ def reconstruct_response(response_lists, model="mistral-ins-7b-q4", max_parallel
     return clusters
 
 
+    
+# if __name__ == "__main__":
+#     ask_llava("/mnt/L3MVN/tmp/dump/llava_nav/episodes/thread_0/eps_20/0-20-Obs-61.png", model="claude-3-haiku-20240307")
