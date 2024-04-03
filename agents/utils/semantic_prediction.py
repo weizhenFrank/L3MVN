@@ -17,7 +17,10 @@ from detectron2.utils.visualizer import ColorMode, Visualizer
 import detectron2.data.transforms as T
 
 from constants import coco_categories_mapping
-
+from ultralytics import YOLO
+import cv2
+from PIL import Image
+from pathlib import Path
 
 class SemanticPredMaskRCNN():
 
@@ -31,10 +34,10 @@ class SemanticPredMaskRCNN():
         img = img[:, :, ::-1]
         image_list.append(img)
         seg_predictions, vis_output = self.segmentation_model.get_predictions(
-            image_list, visualize=args.visualize == 2)
+            image_list, visualize=True)
 
-        if args.visualize == 2:
-            img = vis_output.get_image()
+        # if args.visualize == 2:
+        img = vis_output.get_image()
 
         semantic_input = np.zeros((img.shape[0], img.shape[1], 15 + 1))
 
@@ -250,3 +253,37 @@ class BatchPredictor:
         with torch.no_grad():
             predictions = self.model(inputs)
             return predictions
+
+class YOLOSeg():
+    def __init__(self, args):
+        self.model = YOLO('yolov8x-seg.pt')  # load an official model
+        self.arg = args
+
+    def get_prediction(self, img):
+        args = self.arg
+        img = img[:, :, ::-1]
+        
+        results = self.model(img, conf=args.sem_pred_prob_thr, device=f"cuda:{args.sem_gpu_id}")
+        
+        # Initialize semantic input with zeros
+        semantic_input = np.zeros((img.shape[0], img.shape[1], 15 + 1))
+        
+        # Iterate over detection results
+        r = results[0]
+        img = np.copy(r.orig_img)
+        
+        # Iterate over each object contour
+        for ci, c in enumerate(r):
+            class_idx = c.boxes.cls.tolist().pop()
+            bin_masks = np.zeros(img.shape[:2], dtype=np.uint8)
+            
+            # Create contour mask
+            contour = c.masks.xy.pop().astype(np.int32).reshape(-1, 1, 2)
+            _ = cv2.drawContours(bin_masks, [contour], -1, 1, cv2.FILLED)
+            
+            # Update semantic input with binary mask
+            if class_idx in coco_categories_mapping:
+                idx = coco_categories_mapping[class_idx]
+                semantic_input[:, :, idx] += bin_masks
+
+        return semantic_input, r.plot()

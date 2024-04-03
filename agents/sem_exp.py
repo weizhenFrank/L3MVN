@@ -10,7 +10,7 @@ import time
 from envs.utils.fmm_planner import FMMPlanner
 from envs.habitat.objectgoal_env import ObjectGoal_Env
 from envs.habitat.objectgoal_env21 import ObjectGoal_Env21
-from agents.utils.semantic_prediction import SemanticPredMaskRCNN
+from agents.utils.semantic_prediction import SemanticPredMaskRCNN, YOLOSeg
 from constants import color_palette
 import envs.utils.pose as pu
 import agents.utils.visualization as vu
@@ -43,6 +43,7 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env):
 
         self.device = args.device
         self.sem_pred = SemanticPredMaskRCNN(args)
+        # self.sem_pred = YOLOSeg(args)
         self.red_sem_pred = load_rednet(
             self.device, ckpt='RedNet/model/rednet_semmap_mp3d_40.pth', resize=True, # since we train on half-vision
         )

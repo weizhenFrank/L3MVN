@@ -71,6 +71,24 @@ hm3d_category = [
         "stairs"
 ]
 
+# hm3d_category = [
+#         "chair",
+#         "sofa",
+#         "plant",
+#         "bed",
+#         "toilet",
+#         "tv_monitor",
+#         "dining-table",
+#         "oven",
+#         "sink",
+#         "refrigerator",
+#         "book",
+#         "clock",
+#         "vase",
+#         "cup",
+#         "bottle"
+# ]
+
 coco_categories_mapping = {
     56: 0,  # chair
     57: 1,  # couch

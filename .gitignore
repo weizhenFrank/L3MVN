@@ -3,3 +3,7 @@ data/*
 *.pth
 tmp/*
 gibson_tiny/
+data_original
+
+*.pt
+runs
