@@ -772,7 +772,7 @@ def ask_vision(num_samples=1, model="gpt-4-vision-preview", image_path="obs.jpg"
 
 
 @retry.retry(tries=5)
-def ask_llava(image_path, model="llava-v1.5-7b", item_mode=False):
+def ask_llava(image_path, model="llava-v1.5-7b", item_mode=False, room_mode=False):
     if item_mode:
         system_prompt = """You are MaskRCNN. Please list the items you deteced. Only return the items. 
         EXAMPLE:
@@ -820,6 +820,52 @@ def ask_llava(image_path, model="llava-v1.5-7b", item_mode=False):
         misc.
         
         Your answer will be Like: bathtub, shower, tv_monitor, furniture.Note: No sentence, just list of items.
+        """
+    elif room_mode:
+        system_prompt = """You are room annotator. You have observation as image of indoor house. Please give the room label of the image. Only return the name of the room. 
+        
+        Your answer should only contain the name of the room in the image, the name MUST choose from:
+        
+        Foyer
+        Mudroom
+        Hallway
+        Living Room
+        Family Room
+        Dining Room
+        Kitchen
+        Breakfast Nook
+        Sunroom
+        Home Office
+        Library
+        Game Room
+        Home Theater
+        Bedrooms
+        Master Bedroom
+        Guest Bedroom
+        Nursery
+        Bunk Room
+        Master Bathroom
+        Full Bathroom
+        Half Bathroom (Powder Room)
+        En Suite Bathroom
+        Jack and Jill Bathroom
+        Laundry Room
+        Pantry
+        Closet
+        Basement
+        Attic
+        Patio
+        Deck
+        Balcony
+        Porch
+        Garden
+        Garage
+        Workshop
+
+
+        Your answer will be Like: Hallway. \n
+        
+        Note: No sentence. Only return the name from above.
         """
     else:
         system_prompt = "You are home assistant robot and you are in a house. You have the obervation. Please describe the image you observed. The reason why you need to describe the image because I need to find a object. So your description should reflect the information that can help me find the object. The object I need to find is one of: chair, couch, potted plant, bed, toilet, and TV."
