@@ -10,6 +10,7 @@ from openai import OpenAI
 import requests
 import concurrent.futures
 import time
+from agents.utils import semantic_prediction
 
 LLM_SYSTEM_PROMPT_POSITIVE = """You are a robot exploring an environment for the first time. You will be given an object to look for and should provide guidance of where to explore based on a series of observations. Observations will be given as a list of scene descriptions numbered 1 to N. 
 
@@ -449,7 +450,7 @@ class LanguageMethod(Enum):
     GREEDY = 4
     VISION_DES = 5
 
-def query_llm(method: LanguageMethod, object_clusters: list, goal: str, reasoning_enabled: bool = True, model="gpt-4-0125-preview", out_path=None) -> list:
+def query_llm(method: LanguageMethod, object_clusters: list, goal: str, reasoning_enabled: bool = True, model="gpt-4-0125-preview", out_path=None, item_mode=False) -> list:
     """
     Query the LLM fore a score and a selected goal. Returns a list of language scores for each target point
     method = SINGLE_SAMPLE uses the naive single sample LLM and binary scores of 0 or 1
@@ -460,10 +461,11 @@ def query_llm(method: LanguageMethod, object_clusters: list, goal: str, reasonin
     method = VISION_DES uses the vision based LLM to give scores between 0 and 1
     """
     if method == LanguageMethod.VISION_DES:
-        response_lists = combine_response(object_clusters)
+        response_lists = combine_response(object_clusters, item_mode)
+        
         import time
         start_time = time.time()
-        reconstructed = reconstruct_response(response_lists)
+        reconstructed = reconstruct_response(response_lists, item_mode=item_mode)
         print("Time to reconstruct:", time.time() - start_time)
         try:
             answer_counts, reasoning = llm_nav(goal, reconstructed, positives=True, reasoning_enabled=reasoning_enabled)
@@ -770,8 +772,57 @@ def ask_vision(num_samples=1, model="gpt-4-vision-preview", image_path="obs.jpg"
 
 
 @retry.retry(tries=5)
-def ask_llava(image_path, model="claude-3-haiku-20240307"):
-    system_prompt = "You are home assistant robot and you are in a house. You have the obervation. Please describe the image you observed. The reason why you need to describe the image because I need to find a object. So your description should reflect the information that can help me find the object. The object I need to find is one of: chair, couch, potted plant, bed, toilet, and TV."
+def ask_llava(image_path, model="llava-v1.5-7b", item_mode=False):
+    if item_mode:
+        system_prompt = """You are MaskRCNN. Please list the items you deteced. Only return the items. 
+        EXAMPLE:
+        Your answer should only contain the items in the image, the item name choose from:
+        
+        wall
+        door
+        ceiling
+        floor
+        picture
+        window
+        chair
+        cushion
+        table
+        sofa
+        bed
+        chest_of_drawers
+        cabinet
+        plant
+        sink
+        stairs
+        appliances
+        toilet
+        stool
+        towel
+        mirror
+        tv_monitor
+        shower
+        column
+        bathtub
+        counter
+        fireplace
+        lighting
+        beam
+        railing
+        shelving
+        blinds
+        gym_equipment
+        seating
+        board_panel
+        furniture
+        unlabeled
+        clothes
+        objects
+        misc.
+        
+        Your answer will be Like: bathtub, shower, tv_monitor, furniture.Note: No sentence, just list of items.
+        """
+    else:
+        system_prompt = "You are home assistant robot and you are in a house. You have the obervation. Please describe the image you observed. The reason why you need to describe the image because I need to find a object. So your description should reflect the information that can help me find the object. The object I need to find is one of: chair, couch, potted plant, bed, toilet, and TV."
     base64_image = encode_image(image_path)
     
     if model == "llava-v1.5-7b":
@@ -808,6 +859,7 @@ def ask_llava(image_path, model="claude-3-haiku-20240307"):
         # Extracting 'content' value from reponse
         try:
             content = response.choices[0].message.content
+            print(f"detector Content for :{image_path}", content)
         # print(content)
         except:
             content = "No response"
@@ -856,14 +908,18 @@ def ask_llava(image_path, model="claude-3-haiku-20240307"):
     with open(json_file_path, 'w') as json_file:
         json.dump({"response": content}, json_file, indent=4)
 
-def combine_response(img_list):
+def combine_response(img_list, item_mode, detect_func=None):
     response_list = []
     for clu in img_list:
         clu_response = []
         for img in clu:
             json_file_path = os.path.splitext(img)[0] + '.json'
             if not os.path.exists(json_file_path):
-                ask_llava(img)
+                if detect_func:
+                    print("Detecting items in image")
+                    detect_func(img)
+                else:
+                    ask_llava(img, item_mode=item_mode)
             with open(json_file_path) as json_file:
                 # Load the JSON data as a dictionary
                 data = json.load(json_file)
@@ -934,8 +990,12 @@ def llm_nav(goal, description_clusters, env="a house", positives=True, num_sampl
 
 
 @retry.retry(tries=5)
-def process_response_list(response_list, model, system_prompt):
+def process_response_list(response_list, model, system_prompt, item_mode=False):
     if len(response_list) > 0:
+        if item_mode:
+            query = "Some items may be redundant or conflicting, but based on your reasoning capabilities, you should provide a list of items that are present in the scene."
+        else:
+            query = "Some of the descriptions may be redundant or conflicting, but based on your reasoning capabilities, you should provide a single description that is complete and accurate. Limit the description to 500 words."
         if 'claude' in model:
             messages = []
         else:
@@ -945,7 +1005,7 @@ def process_response_list(response_list, model, system_prompt):
         prompt = ""
         for i, response in enumerate(response_list):
             prompt += f"For image {i}, your observation is:\n{response}\n\n"
-        query = "Some of the descriptions may be redundant or conflicting, but based on your reasoning capabilities, you should provide a single description that is complete and accurate. Limit the description to 500 words."
+
         prompt += query
         user_message = {"role": "user", "content": prompt}
         messages.append(user_message)
@@ -1008,8 +1068,11 @@ def process_response_list(response_list, model, system_prompt):
         return "No response"
 
 @retry.retry(tries=5)
-def reconstruct_response(response_lists, model="claude-3-haiku-20240307", max_parallel_requests=3, delay=1):
-    system_prompt = "You are good at giving a holistic and complete description of multiple observations. You are given multiple descriptions of a region of an indoor house scene, and you should aggregate them into a single description. Such holistic and complete description should provide useful information for object navigation. For example: I need to find a bed, so your description should reflect the information that can help me find the bed. The list of things I need to find is chosen from: chair, couch, potted plant, bed, toilet, and TV."
+def reconstruct_response(response_lists, model="mistral-ins-7b-q4", max_parallel_requests=3, delay=1, item_mode=False):
+    if item_mode:
+        system_prompt = "You are given a list of items that are present in the scene. You should aggregate them into a single list for the scene"
+    else:
+        system_prompt = "You are good at giving a holistic and complete description of multiple observations. You are given multiple descriptions of a region of an indoor house scene, and you should aggregate them into a single description. Such holistic and complete description should provide useful information for object navigation. For example: I need to find a bed, so your description should reflect the information that can help me find the bed. The list of things I need to find is chosen from: chair, couch, potted plant, bed, toilet, and TV."
 
     if 'claude' in model:
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_parallel_requests) as executor:

@@ -57,7 +57,7 @@ import datetime
 import os
 from PIL import Image, ImageDraw
 from agents.utils import visualization
-
+from agents.utils import semantic_prediction
 
 def visualize_frontiers(sem_map, frontier_boundaries, args, process_rank, episode_number, rgb_path, map_pred, exp_pred, target_edge_map, local_goal_maps, triangle_vertices_list, out_path=None):
     local_w = map_pred.shape[0]
@@ -577,8 +577,8 @@ def main():
 
         return scoring_fxn
 
-    scoring_fxn = configure_lm(args.llm)
-
+    scoring_fxn = configure_lm("GPT2-large")
+    yolo_detector = semantic_prediction.YOLODetect(args)
     ### LLM 
     def construct_dist(objs):
         query_str = "A room containing "
@@ -969,28 +969,39 @@ def main():
                                     target_point_map[e],
                                     local_goal_maps[e], triangle_vertices_list, out_path=vis_img_path)
                 
-                # Use the new LLM tool to get scores for each cluster
-                if frontier_rgb_list:
-                    scores, reasoning = language_tools.query_llm(language_tools.LanguageMethod.VISION_DES, frontier_rgb_list, cname, reasoning_enabled=True, model=args.llm)
-
-                    # Convert scores to tensors and ensure they are on the same device
-                    scores_tensors = [torch.tensor(score, dtype=torch.float).to(device) for score in scores]
-                    import pdb; pdb.set_trace()
-                    # # Extend the frontier score list with the new tensor scores
-                    # frontier_score_list[e].extend(scores_tensors)
+                
+                
+                response_lists = language_tools.combine_response(frontier_rgb_list, True, detect_func=yolo_detector.get_prediction)
+                for response in response_lists:
+                    if len(response)>0 and found_goal[e] == 0:
+                        ref_dist = F.softmax(construct_dist(response),
+                                            dim=0).to(device)
+                        new_dist = ref_dist
+                        frontier_score_list[e].append(new_dist[category_to_id.index(cname)]) 
+                    else:
+                        frontier_score_list[e].append(Goal_score[lay]/max(Goal_score) * 0.1 + 0.1) 
+                # # Use the new LLM tool to get scores for each cluster
+                # if frontier_rgb_list:
                     
-                    # Stack the scores tensors to apply softmax
-                    stacked_scores = torch.stack(scores_tensors)
-                    softmaxed_scores = F.softmax(stacked_scores, dim=0)
-                    final_scores = [score for score in softmaxed_scores]
-                    # Update the frontier score list with the softmaxed scores
-                    frontier_score_list[e].extend(final_scores)
-                else:
-                    # Extend with default scores, ensuring they are tensors on the correct CUDA device
-                    logging.warning(f"No clusters found for environment {e}. Using default scores.")
-                    print("No clusters found for environment {e}. Using default scores.")
-                    default_scores = [torch.tensor(0.1, device) for _ in range(tpm)]
-                    frontier_score_list[e].extend(default_scores)
+                #     scores, reasoning = language_tools.query_llm(language_tools.LanguageMethod.VISION_DES, frontier_rgb_list, cname, reasoning_enabled=True, model=args.llm, item_mode=True)
+
+                #     # Convert scores to tensors and ensure they are on the same device
+                #     scores_tensors = [torch.tensor(score, dtype=torch.float).to(device) for score in scores]
+                #     # # Extend the frontier score list with the new tensor scores
+                #     # frontier_score_list[e].extend(scores_tensors)
+                    
+                #     # Stack the scores tensors to apply softmax
+                #     stacked_scores = torch.stack(scores_tensors)
+                #     softmaxed_scores = F.softmax(stacked_scores, dim=0)
+                #     final_scores = [score for score in softmaxed_scores]
+                #     # Update the frontier score list with the softmaxed scores
+                #     frontier_score_list[e].extend(final_scores)
+                # else:
+                #     # Extend with default scores, ensuring they are tensors on the correct CUDA device
+                #     logging.warning(f"No clusters found for environment {e}. Using default scores.")
+                #     print("No clusters found for environment {e}. Using default scores.")
+                #     default_scores = [torch.tensor(0.1, device) for _ in range(tpm)]
+                #     frontier_score_list[e].extend(default_scores)
 
 
 

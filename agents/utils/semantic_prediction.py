@@ -2,7 +2,7 @@
 # https://github.com/facebookresearch/detectron2/blob/master/demo/demo.py and
 # https://github.com/facebookresearch/detectron2/blob/master/demo/predictor.py
 
-import argparse
+import argparse, os, json
 import time
 
 import torch
@@ -17,7 +17,8 @@ from detectron2.utils.visualizer import ColorMode, Visualizer
 import detectron2.data.transforms as T
 
 from constants import coco_categories_mapping
-
+from ultralytics import YOLO
+import cv2
 
 class SemanticPredMaskRCNN():
 
@@ -255,3 +256,27 @@ class BatchPredictor:
         with torch.no_grad():
             predictions = self.model(inputs)
             return predictions
+
+
+class YOLODetect():
+    def __init__(self, args):
+        self.model = YOLO('yolov8x.pt')  # load an official model
+        self.arg = args
+
+    def get_prediction(self, img):
+        args = self.arg
+        results = self.model(img, conf=args.sem_pred_prob_thr, device=f"cuda:{args.sem_gpu_id}", augment=True, save=True, save_txt=True)
+        r = results[0]
+        objects = []
+        for c in r:
+            class_name = c.names[c.boxes.cls.tolist().pop()]
+            objects.append(class_name)
+        print(f"for {img}", objects)
+        
+        json_file_path = os.path.splitext(img)[0] + '.json'
+
+        with open(json_file_path, 'w') as json_file:
+            json.dump({"response": ",".join(objects)}, json_file, indent=4)
+        
+        
+                
