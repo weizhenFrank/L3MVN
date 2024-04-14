@@ -861,10 +861,7 @@ def ask_llava(image_path, model="llava-v1.5-7b", item_mode=False, room_mode=Fals
         Garden
         Garage
         Workshop
-
-
-        Your answer will be Like: Hallway. \n
-        
+                
         Note: No sentence. Only return the name from above.
         """
     else:
@@ -950,7 +947,8 @@ def ask_llava(image_path, model="llava-v1.5-7b", item_mode=False, room_mode=Fals
     json_file_path = os.path.splitext(image_path)[0] + '.json'
 
     # Save the response to a JSON file
-    # print("Time to get img caption response:", time.time() - now)
+    print("Time to get img caption response:", time.time() - now)
+    print("Room label:", content)
     with open(json_file_path, 'w') as json_file:
         json.dump({"response": content}, json_file, indent=4)
 
@@ -965,7 +963,7 @@ def combine_response(img_list, item_mode, detect_func=None):
                     print("Detecting items in image")
                     detect_func(img)
                 else:
-                    ask_llava(img, item_mode=item_mode)
+                    ask_llava(img, item_mode=item_mode, room_mode=True)
             with open(json_file_path) as json_file:
                 # Load the JSON data as a dictionary
                 data = json.load(json_file)

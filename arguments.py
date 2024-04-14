@@ -171,6 +171,8 @@ def get_args():
     parser.add_argument("--key", type=str,
                         default=os.getenv("OPENAI_API_KEY"),
                         help="openai model api key")
+    # frontiers settings
+    parser.add_argument('--num_rgb',type=int, default=8)
 
 
 

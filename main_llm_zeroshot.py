@@ -920,7 +920,7 @@ def main():
                 
                 
                 frontier_rgb_list = language_tools.decode_img_list(frontier_rgb_keys_list, args)
-                frontier_rgb_list = language_tools.sample_images(frontier_rgb_list, 8)
+                frontier_rgb_list = language_tools.sample_images(frontier_rgb_list, args.num_rgb)
 
                 frontier_boundaries = []
 

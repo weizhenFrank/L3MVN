@@ -274,7 +274,23 @@ class YOLODetect():
         print(f"for {img}", objects)
         
         json_file_path = os.path.splitext(img)[0] + '.json'
+        # if os.path.exists(json_file_path):
+        #     import json
+        #     with open(json_file_path, 'r') as json_file:
+        #         data = json.load(json_file)
 
+        #     existing_response = data.get('response', '')
+
+        #     new_content = ",".join(objects)
+        #     updated_response = ','.join([new_content, existing_response])
+
+        #     # Update the data dictionary with the updated response
+        #     data['response'] = updated_response
+
+        #     # Write the updated data back to the JSON file
+        #     with open(json_file_path, 'w') as json_file:
+        #         json.dump(data, json_file, indent=4)
+        # else:
         with open(json_file_path, 'w') as json_file:
             json.dump({"response": ",".join(objects)}, json_file, indent=4)
         
