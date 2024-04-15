@@ -10,7 +10,7 @@ from ultralytics import YOLO
 model = YOLO('yolov8x.pt')  # load an official model
 
 # from ndarray
-im2 = cv2.imread("/mnt/L3MVN/tmp/dump/llava_nav/episodes/thread_1/eps_7/1-7-Obs-90.png")
+im2 = cv2.imread("/mnt/ObjectNav/tmp/dump/llava_nav/episodes/thread_1/eps_7/1-7-Obs-90.png")
 results = model.predict(source=im2, save=True, save_txt=True, conf=0.7, device="cuda:5", augment=True)  # save predictions as labels
 
 
