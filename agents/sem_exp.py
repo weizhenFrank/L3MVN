@@ -20,7 +20,7 @@ from constants import mp_categories_mapping
 import torch
 import language_tools
 
-class Sem_Exp_Env_Agent(ObjectGoal_Env):
+class Sem_Exp_Env_Agent(ObjectGoal_Env21):
     """The Sem_Exp environment agent class. A seperate Sem_Exp_Env_Agent class
     object is used for each environment thread.
 
