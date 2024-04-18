@@ -18,6 +18,7 @@ import agents.utils.visualization as vu
 from RedNet.RedNet_model import load_rednet
 from constants import mp_categories_mapping
 import torch
+import json
 import language_tools
 
 class Sem_Exp_Env_Agent(ObjectGoal_Env21):
@@ -410,8 +411,11 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env21):
             for i in range(16):
                 sem_seg_pred[:,:,i][semantic == i+1] = 1
         else: 
-            red_semantic_pred, semantic_pred = self._get_sem_pred(
+            red_semantic_pred, semantic_pred, detected_class = self._get_sem_pred(
                 rgb.astype(np.uint8), depth, use_seg=use_seg)
+            json_file_path = os.path.splitext(fileName)[0] + '.json'
+            with open(json_file_path, 'w') as json_file:
+                json.dump({"response": ",".join(detected_class)}, json_file, indent=4)
             # add additional channels for the description of GPT4V
             sem_seg_pred = np.zeros((rgb.shape[0], rgb.shape[1], 15 + 1)) 
 
@@ -469,12 +473,13 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env21):
             with torch.no_grad():
                 red_semantic_pred = self.red_sem_pred(image, depth)
                 red_semantic_pred = red_semantic_pred.squeeze().cpu().detach().numpy()
-            semantic_pred, self.rgb_vis = self.sem_pred.get_prediction(rgb)
+            semantic_pred, self.rgb_vis, detected_class = self.sem_pred.get_prediction(rgb)
             semantic_pred = semantic_pred.astype(np.float32)
         else:
             semantic_pred = np.zeros((rgb.shape[0], rgb.shape[1], 16))
             self.rgb_vis = rgb[:, :, ::-1]
-        return red_semantic_pred, semantic_pred
+            detected_class = ""
+        return red_semantic_pred, semantic_pred, detected_class
 
     def _visualize(self, inputs):
         args = self.args

@@ -960,7 +960,7 @@ def combine_response(img_list, item_mode, detect_func=None):
             json_file_path = os.path.splitext(img)[0] + '.json'
             if not os.path.exists(json_file_path):
                 if detect_func:
-                    print("Detecting items in image")
+                    print("No Json File. Detecting items in image")
                     detect_func(img)
                 else:
                     ask_llava(img, item_mode=item_mode, room_mode=True)

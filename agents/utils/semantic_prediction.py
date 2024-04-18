@@ -33,7 +33,7 @@ class SemanticPredMaskRCNN():
         image_list.append(img)
         # seg_predictions, vis_output = self.segmentation_model.get_predictions(
         #     image_list, visualize=args.visualize == 2)
-        seg_predictions, vis_output = self.segmentation_model.get_predictions(
+        seg_predictions, vis_output, detected_class = self.segmentation_model.get_predictions(
         image_list, visualize=True)
         
 
@@ -50,7 +50,7 @@ class SemanticPredMaskRCNN():
                 obj_mask = seg_predictions[0]['instances'].pred_masks[j] * 1.
                 semantic_input[:, :, idx] += obj_mask.cpu().numpy()
 
-        return semantic_input, img
+        return semantic_input, img, detected_class
 
 
 def compress_sem_map(sem_map):
@@ -189,10 +189,20 @@ class VisualizationDemo(object):
                     )
                 if "instances" in predictions:
                     instances = predictions["instances"].to(self.cpu_device)
+                    classes = predictions["instances"].pred_classes
+                    
+                    class_names = visualizer.metadata.get("thing_classes", None)
+                    # print("class_names", class_names)
+                    detected_classes = [class_names[i] for i in classes] if classes is not None else ""
+                    # print("detected_classes", detected_classes)
+                    # import time
                     vis_output = visualizer.draw_instance_predictions(
                         predictions=instances)
-
-        return all_predictions, vis_output
+                    
+                    # cv2.imwrite(f"output_{time.time()}.jpg", vis_output.get_image())
+                    # print(f"output_{time.time()}.jpg")
+                    
+        return all_predictions, vis_output, detected_classes
 
 
 class BatchPredictor:
@@ -220,7 +230,6 @@ class BatchPredictor:
         self.model = build_model(self.cfg)
         self.model.eval()
         self.metadata = MetadataCatalog.get(cfg.DATASETS.TEST[0])
-
         checkpointer = DetectionCheckpointer(self.model)
         checkpointer.load(cfg.MODEL.WEIGHTS)
 
